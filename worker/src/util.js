@@ -1,7 +1,9 @@
-// worker/src/util.js
-
+// src/util.js
 export const VERSION = "v1.5.9-plaintext";
 
+/**
+ * Returns standard CORS and cache control headers.
+ */
 export function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
@@ -14,41 +16,53 @@ export function corsHeaders() {
   };
 }
 
-export function json(data, init = 200) {
-  return new Response(JSON.stringify(data), { status: init, headers: corsHeaders() });
+/**
+ * JSON response helper
+ */
+export function json(data, status = 200) {
+  return new Response(JSON.stringify(data), { status, headers: corsHeaders() });
 }
 
-export function badRequest(message = "bad request") {
-  return json({ error: message }, 400);
+/**
+ * Common error helpers
+ */
+export function badRequest(msg = "Bad request") {
+  return json({ error: msg }, 400);
 }
-
-export function notFound(message = "not found") {
-  return json({ error: message }, 404);
+export function notFound(msg = "Not found") {
+  return json({ error: msg }, 404);
 }
-
 export function okEmpty() {
   return new Response(null, { status: 204, headers: corsHeaders() });
 }
 
-// --- list helpers ---
+/**
+ * Parses a plaintext list (from env variable) into a Set.
+ * Accepts newline, comma, or space separated lists.
+ */
 export function parseListToSet(raw) {
   if (!raw) return new Set();
-  // Accept very large plaintext variables; split on newlines/commas/whitespace
   return new Set(
     String(raw)
-      .split(/[\r\n,]+/g)
-      .map((s) => s.trim().toLowerCase())
+      .split(/[\r\n, ]+/)
+      .map((v) => v.trim().toLowerCase())
       .filter(Boolean)
   );
 }
 
+/**
+ * Normalizes hex addresses.
+ */
 export function normalizeHexAddress(addr) {
   if (!addr) return null;
-  const a = String(addr).trim().toLowerCase();
-  return /^0x[a-f0-9]{40}$/.test(a) ? a : null;
+  const lower = String(addr).trim().toLowerCase();
+  return /^0x[a-f0-9]{40}$/.test(lower) ? lower : null;
 }
 
-// Risk normalization (front-end expects this shape)
+/**
+ * Builds a normalized JSON object matching the structure your
+ * X-Wallet frontend expects.
+ */
 export function buildRiskResponse({
   address,
   network = "unknown",
