@@ -1,23 +1,34 @@
-// X-Wallet v1.6.1 — canonical build (networks, balances, tx history, SafeSend modal, ≥90 hard block -> "Return to Wallet")
+// X-Wallet v1.6.2 — EVM multi-network expansion + SafeSend hard-block "Return to Wallet"
+// - Full EVM support: Ethereum, Sepolia, Polygon PoS, Base, Optimism, Arbitrum, Polygon zkEVM, Linea
+// - Preview (non-EVM placeholders): Solana, Tron
 
 (async function () {
   /* ================= CONFIG ================= */
   const CONFIG = {
-    VERSION: "v1.6.1",
+    VERSION: "v1.6.2",
     ALCHEMY_KEY: "kxHg5y9yBXWAb9cOcJsf0", // <-- replace if needed
     SAFE_SEND_ORG: "https://xwalletv1dot2.agedotcom.workers.dev",
     CHAINS: {
-      ethereum: { id:1, label:"Ethereum Mainnet",  nativeSymbol:"ETH",  rpc:(k)=>`https://eth-mainnet.g.alchemy.com/v2/${k}`,  explorer:"https://etherscan.io" },
-      sepolia:  { id:11155111, label:"Ethereum Sepolia (testnet)", nativeSymbol:"ETH", rpc:(k)=>`https://eth-sepolia.g.alchemy.com/v2/${k}`, explorer:"https://sepolia.etherscan.io" },
-      polygon:  { id:137, label:"Polygon", nativeSymbol:"MATIC", rpc:(k)=>`https://polygon-mainnet.g.alchemy.com/v2/${k}`, explorer:"https://polygonscan.com" },
-      base:     { id:8453, label:"Base", nativeSymbol:"ETH", rpc:(k)=>`https://base-mainnet.g.alchemy.com/v2/${k}`, explorer:"https://basescan.org" },
-      optimism: { id:10, label:"Optimism", nativeSymbol:"ETH", rpc:(k)=>`https://opt-mainnet.g.alchemy.com/v2/${k}`, explorer:"https://optimistic.etherscan.io" }
+      // -------- EVM --------
+      ethereum: { type:"evm", id:1, label:"Ethereum Mainnet",  nativeSymbol:"ETH",  rpc:(k)=>`https://eth-mainnet.g.alchemy.com/v2/${k}`,  explorer:"https://etherscan.io" },
+      sepolia:  { type:"evm", id:11155111, label:"Ethereum Sepolia (testnet)", nativeSymbol:"ETH", rpc:(k)=>`https://eth-sepolia.g.alchemy.com/v2/${k}`, explorer:"https://sepolia.etherscan.io" },
+      polygon:  { type:"evm", id:137, label:"Polygon PoS", nativeSymbol:"MATIC", rpc:(k)=>`https://polygon-mainnet.g.alchemy.com/v2/${k}`, explorer:"https://polygonscan.com" },
+      base:     { type:"evm", id:8453, label:"Base", nativeSymbol:"ETH", rpc:(k)=>`https://base-mainnet.g.alchemy.com/v2/${k}`, explorer:"https://basescan.org" },
+      optimism: { type:"evm", id:10, label:"Optimism", nativeSymbol:"ETH", rpc:(k)=>`https://opt-mainnet.g.alchemy.com/v2/${k}`, explorer:"https://optimistic.etherscan.io" },
+      // NEW EVMs
+      arbitrum: { type:"evm", id:42161, label:"Arbitrum One", nativeSymbol:"ETH", rpc:(k)=>`https://arb-mainnet.g.alchemy.com/v2/${k}`, explorer:"https://arbiscan.io" },
+      zkevm:    { type:"evm", id:1101, label:"Polygon zkEVM", nativeSymbol:"ETH", rpc:(k)=>`https://polygonzkevm-mainnet.g.alchemy.com/v2/${k}`, explorer:"https://zkevm.polygonscan.com" },
+      linea:    { type:"evm", id:59144, label:"Linea", nativeSymbol:"ETH", rpc:(k)=>`https://linea-mainnet.g.alchemy.com/v2/${k}`, explorer:"https://lineascan.build" },
+
+      // -------- Non-EVM (Preview placeholders) --------
+      solana:   { type:"solana", label:"Solana (Preview)",  nativeSymbol:"SOL",  rpc:(k)=>`https://solana-mainnet.g.alchemy.com/v2/${k}`, explorer:"https://solscan.io" },
+      tron:     { type:"tron",   label:"Tron (Preview)",    nativeSymbol:"TRX",  rpc:(k)=>`https://tron-mainnet.g.alchemy.com/v2/${k}`,   explorer:"https://tronscan.org" }
     }
   };
 
   /* ================= STATE ================== */
-  let ethers = null;              // will be set by dynamic import
-  let provider = null;
+  let ethers = null;              // set by dynamic import (EVM only)
+  let provider = null;            // ethers provider (EVM only)
   const state = {
     unlocked: false,
     chainKey: localStorage.getItem("xw.chain") || "sepolia",
@@ -28,17 +39,18 @@
     lastRisk: null
   };
 
-  /* ============ DYNAMIC ETHERS LOAD ============ */
+  /* ============ DYNAMIC ETHERS LOAD (EVM) ============ */
   async function ensureEthersLoaded(){
+    const chain = CONFIG.CHAINS[state.chainKey];
+    if (chain?.type !== "evm") return false; // ethers only needed/used for EVM
     if (ethers) return true;
     try {
       const mod = await import("https://esm.sh/ethers@6.13.2?bundle");
       ethers = mod.ethers || mod.default || mod;
-      console.log("X-Wallet front-end loaded:", CONFIG.VERSION, "(ethers ready)");
+      console.log("X-Wallet:", CONFIG.VERSION, "ethers ready for EVM");
       return true;
     } catch (e) {
       console.warn("Ethers import failed:", e);
-      console.log("X-Wallet front-end loaded:", CONFIG.VERSION, "(ethers unavailable)");
       return false;
     }
   }
@@ -50,15 +62,26 @@
   const clamp=(n,a=0,b=100)=>Math.max(a,Math.min(b,n));
   const host = (u)=>{ try { return new URL(u).host; } catch { return u; } };
 
+  function currentChain(){ return CONFIG.CHAINS[state.chainKey]; }
+
   function setChain(chainKey){
     if (!CONFIG.CHAINS[chainKey]) return;
     state.chainKey = chainKey;
     localStorage.setItem("xw.chain", chainKey);
+
+    const chain = currentChain();
+
     (async () => {
-      if (!await ensureEthersLoaded()) { provider = null; return; }
-      provider = new ethers.JsonRpcProvider(CONFIG.CHAINS[chainKey].rpc(CONFIG.ALCHEMY_KEY));
+      if (chain.type === "evm"){
+        if (!await ensureEthersLoaded()) { provider = null; refreshOpenView(); return; }
+        provider = new ethers.JsonRpcProvider(chain.rpc(CONFIG.ALCHEMY_KEY));
+      } else {
+        // Non-EVM preview: clear ethers provider to avoid accidental calls
+        provider = null;
+      }
       refreshOpenView();
     })();
+
     const sel = $("#networkSelect");
     if (sel && sel.value !== chainKey) sel.value = chainKey;
   }
@@ -66,7 +89,8 @@
   function populateTopNetworkSelect(){
     const sel = $("#networkSelect");
     if (!sel) return;
-    sel.innerHTML = Object.keys(CONFIG.CHAINS).map(k=>`<option value="${k}">${CONFIG.CHAINS[k].label}</option>`).join("");
+    const keys = Object.keys(CONFIG.CHAINS);
+    sel.innerHTML = keys.map(k=>`<option value="${k}">${CONFIG.CHAINS[k].label}</option>`).join("");
     sel.value = state.chainKey in CONFIG.CHAINS ? state.chainKey : "sepolia";
     sel.addEventListener("change", e => setChain(e.target.value));
   }
@@ -81,7 +105,7 @@
   }
   function scheduleAutoLock(){ clearTimeout(window._inactivityTimer); window._inactivityTimer = setTimeout(()=>{ lock(); showLock(); }, 10*60*1000); }
 
-  /* ========= DERIVATION (lazy ethers) ========= */
+  /* ========= DERIVATION (EVM; lazy ethers) ========= */
   function deriveAccountFromPhrase(phrase,index){
     if (!ethers) throw new Error("ethers not loaded");
     const path=`m/44'/60'/0'/0/${index}`;
@@ -101,7 +125,7 @@
     dashboard(){
       const hasVault = !!localStorage.getItem("xwallet_vault_v13");
       const unlocked = state.unlocked;
-      const net = CONFIG.CHAINS[state.chainKey];
+      const net = currentChain();
       const accRows = unlocked && state.accounts.length
         ? state.accounts.map(a=>`<tr><td>${a.index+1}</td><td class="mono">${a.address}</td></tr>`).join("")
         : "<tr><td colspan='2'>No wallets yet.</td></tr>";
@@ -136,6 +160,7 @@
         <div class="small">Current network</div>
         <div class="label">${net.label}</div>
         <div class="small">Explorer: ${host(net.explorer)}</div>
+        ${net.type !== "evm" ? `<div class="small warn" style="margin-top:8px">Preview network — balances, send, and history are temporarily disabled.</div>` : ""}
         <hr class="sep"/>
         ${createImport}
         ${manage}
@@ -143,7 +168,14 @@
     },
 
     wallets(){
-      const native = CONFIG.CHAINS[state.chainKey].nativeSymbol;
+      const net = currentChain();
+      if (net.type !== "evm"){
+        return `
+          <div class="label">Wallet Balances — ${net.nativeSymbol}</div>
+          <div class="small">Preview support for ${net.label}. Balances and token lists will be enabled in a near-term update.</div>
+        `;
+      }
+      const native = net.nativeSymbol;
       const rows = state.accounts.map(a=>`<tr><td>${a.index+1}</td><td class="mono">${a.address}</td><td id="bal-${a.index}">—</td></tr>`).join("");
       return `
         <div class="label">Wallet Balances — ${native}</div>
@@ -159,7 +191,13 @@
     },
 
     send(){
-      const net = CONFIG.CHAINS[state.chainKey];
+      const net = currentChain();
+      if (net.type !== "evm"){
+        return `
+          <div class="label">Send (${net.label})</div>
+          <div class="small">Preview: sending for ${net.label} is disabled in this build. (Non-EVM flow.)</div>
+        `;
+      }
       const acctOpts = state.accounts.map(a=>`<option value="${a.index}" ${a.index===state.signerIndex?"selected":""}>
         Wallet #${a.index+1} — ${a.address.slice(0,6)}…${a.address.slice(-4)}
       </option>`).join("") || "<option disabled>No wallets</option>";
@@ -200,7 +238,7 @@
     // dashboard buttons
     if (view==="dashboard"){
       $("#gen")?.addEventListener("click", async ()=>{
-        if (!await ensureEthersLoaded()) return alert("Network blocked ethers. Try again or check CSP.");
+        if (!await ensureEthersLoaded()) return alert("Network blocked ethers or non-EVM network selected. Switch to an EVM network and try again.");
         $("#mnemonic").value = ethers.Mnemonic.fromEntropy(ethers.randomBytes(16)).phrase;
       });
       $("#save")?.addEventListener("click", async ()=>{
@@ -221,6 +259,8 @@
       });
       $("#addAcct")?.addEventListener("click", async ()=>{
         if (!state.unlocked) return alert("Unlock first");
+        const chain = currentChain();
+        if (chain.type !== "evm") return alert("Adding EVM wallets is only available on EVM networks.");
         if (!await ensureEthersLoaded()) return alert("Ethers not loaded.");
         const n = Number(localStorage.getItem("xwallet_accounts_n")||"1")+1;
         localStorage.setItem("xwallet_accounts_n", String(n));
@@ -231,21 +271,33 @@
     }
 
     // wallets
-    if (view==="wallets"){ loadWalletBalances().catch(()=>{}); loadERC20Balances().catch(()=>{}); }
+    if (view==="wallets"){
+      const chain = currentChain();
+      if (chain.type === "evm"){
+        loadWalletBalances().catch(()=>{});
+        loadERC20Balances().catch(()=>{});
+      }
+    }
 
     // send
     if (view==="send"){
-      $("#fromAccount")?.addEventListener("change", e=>{
-        state.signerIndex = Number(e.target.value);
+      const chain = currentChain();
+      if (chain.type === "evm"){
+        $("#fromAccount")?.addEventListener("change", e=>{
+          state.signerIndex = Number(e.target.value);
+          loadRecentTxs().catch(()=>{});
+        });
+        $("#doSend")?.addEventListener("click", sendEthFlow);
+        const toEl = $("#sendTo");
+        const updateRx = ()=> loadAddressTxs(toEl.value.trim(),"rxList").catch(()=>{});
+        toEl?.addEventListener("input",()=>{ if (/^0x[a-fA-F0-9]{40}$/.test(toEl.value.trim())) updateRx(); });
+        toEl?.addEventListener("blur", updateRx);
         loadRecentTxs().catch(()=>{});
-      });
-      $("#doSend")?.addEventListener("click", sendEthFlow);
-      const toEl = $("#sendTo");
-      const updateRx = ()=> loadAddressTxs(toEl.value.trim(),"rxList").catch(()=>{});
-      toEl?.addEventListener("input",()=>{ if (/^0x[a-fA-F0-9]{40}$/.test(toEl.value.trim())) updateRx(); });
-      toEl?.addEventListener("blur", updateRx);
-      loadRecentTxs().catch(()=>{});
-      updateRx();
+        updateRx();
+      } else {
+        // Non-EVM preview: just show disabled state in output panel
+        const out=$("#sendOut"); if(out) out.textContent="Non-EVM send is disabled in this preview.";
+      }
     }
 
     // settings
@@ -259,10 +311,8 @@
   function refreshOpenView(){ const active = document.querySelector(".sidebar .item.active")?.dataset?.view || "dashboard"; render(active); }
   function selectItem(v){ $$(".sidebar .item").forEach(x=>x.classList.toggle("active", x.dataset.view===v)); render(v); }
 
-  // === NEW: navigate to Wallets view ===
-  async function goToWallets(){
-    selectItem("wallets");
-  }
+  // Navigate helper (used by Return to Wallet)
+  async function goToWallets(){ selectItem("wallets"); }
 
   /* ===== AES vault helpers ===== */
   async function aesEncrypt(password, plaintext){
@@ -275,7 +325,7 @@
     return {ct:Array.from(ct),iv:Array.from(iv),salt:Array.from(salt)};
   }
 
-  /* ===== History / Balances ===== */
+  /* ===== History / Balances (EVM) ===== */
   async function getTxsAlchemy(address,{limit=10}={}){
     if (!await ensureEthersLoaded() || !provider) return [];
     const base={fromBlock:"0x0",toBlock:"latest",category:["external","erc20"],withMetadata:true,excludeZeroValue:true,
@@ -285,7 +335,7 @@
       provider.send("alchemy_getAssetTransfers",[ {...base,toAddress:address} ]).catch(()=>({transfers:[]})),
     ]);
     const all=[...(outRes?.transfers||[]),...(inRes?.transfers||[])];
-    const net = CONFIG.CHAINS[state.chainKey];
+    const net = currentChain();
     const norm=t=>{
       const ts=t?.metadata?.blockTimestamp?Date.parse(t.metadata.blockTimestamp):0;
       return {
@@ -313,8 +363,11 @@
 
   async function loadWalletBalances(){
     if(!state.unlocked) return;
+    const chain = currentChain();
+    if (chain.type !== "evm"){ return; }
+
     if (!await ensureEthersLoaded() || !provider) { $$("#view [id^='bal-']").forEach(el=>el.textContent="—"); return; }
-    const netSym=CONFIG.CHAINS[state.chainKey].nativeSymbol;
+    const netSym=chain.nativeSymbol;
     let total=0n;
     for(const a of state.accounts){
       try{
@@ -328,6 +381,9 @@
 
   async function loadERC20Balances(){
     if(!state.unlocked) return;
+    const chain = currentChain();
+    if (chain.type !== "evm"){ return; }
+
     const el=$("#erc20List"); if(!el) return;
     el.textContent="Loading…";
     const acct=state.accounts[state.signerIndex]; if(!acct){ el.textContent="No wallet selected."; return; }
@@ -338,11 +394,15 @@
   }
 
   async function loadRecentTxs(){
-    const el=$("#txList"); if(!el) return; el.textContent="Loading…";
+    const chain = currentChain();
+    const el=$("#txList"); if(!el) return;
+    if (chain.type !== "evm"){ el.textContent="History disabled for this preview network."; return; }
+
+    el.textContent="Loading…";
     const acct=state.accounts[state.signerIndex]; if(!acct){ el.textContent="No wallet selected."; return; }
     const txs=await getTxsAlchemy(acct.address,{limit:10});
     if(!txs.length){ el.textContent="No recent transfers."; return; }
-    const ex=CONFIG.CHAINS[state.chainKey].explorer;
+    const ex=chain.explorer;
     el.innerHTML = txs.map(t=>{
       const when = t.timestamp ? new Date(t.timestamp).toLocaleString() : "";
       return `<div>
@@ -354,13 +414,15 @@
   }
 
   async function loadAddressTxs(address, targetId){
+    const chain = currentChain();
     const el = document.getElementById(targetId); if(!el) return;
+    if (chain.type !== "evm"){ el.textContent="History disabled for this preview network."; return; }
     if(!address || !/^0x[a-fA-F0-9]{40}$/.test(address)){ el.textContent="Enter a valid 0x address."; return; }
     el.textContent="Loading…";
     try{
       const txs=await getTxsAlchemy(address,{limit:10});
       if(!txs.length){ el.textContent="No recent transfers."; return; }
-      const ex=CONFIG.CHAINS[state.chainKey].explorer;
+      const ex=chain.explorer;
       el.innerHTML = txs.map(t=>{
         const when = t.timestamp ? new Date(t.timestamp).toLocaleString() : "";
         return `<div>
@@ -376,7 +438,7 @@
   function wireRiskModal(){
     $("#riskClose")?.addEventListener("click", closeRiskModal);
     $("#riskCancel")?.addEventListener("click", closeRiskModal);
-    // NOTE: #riskProceed listener is set dynamically per risk outcome via configureRiskModalActions()
+    // #riskProceed: bound dynamically per risk via configureRiskModalActions()
   }
   function openRiskModal(){
     const m=$("#riskModal"); if(!m) return;
@@ -406,7 +468,7 @@
   }
   function setProceedEnabled(en){ const b=$("#riskProceed"); if(b) b.disabled = !en; }
 
-  // === NEW: Primary button behavior/label based on risk ===
+  // Primary button behavior/label based on risk
   function configureRiskModalActions({ score, ofacHit }){
     const proceedBtn = document.getElementById("riskProceed");
     if(!proceedBtn) return;
@@ -419,7 +481,7 @@
 
     if (hardBlock){
       newBtn.textContent = "Return to Wallet";
-      newBtn.disabled = false; // enable to allow returning
+      newBtn.disabled = false;
       newBtn.addEventListener("click", async () => {
         closeRiskModal();
         await goToWallets();
@@ -454,7 +516,11 @@
     return { score:35, factors:["Risk service unavailable"], blocked:false };
   }
 
+  // === Send flow (EVM only) ===
   async function sendEthFlow(){
+    const chain = currentChain();
+    if (chain.type !== "evm") { alert("Non-EVM send is disabled in this preview."); return; }
+
     const to = $("#sendTo")?.value.trim();
     const amt = $("#sendAmt")?.value.trim();
     if(!/^0x[a-fA-F0-9]{40}$/.test(to||"")) return alert("Invalid recipient address");
@@ -483,7 +549,7 @@
         // Primary becomes "Return to Wallet"
         configureRiskModalActions({ score: risk.score, ofacHit: true });
       } else if (risk.score >= 70) {
-        // High, allow with acknowledgement (UX: primary still "Complete transaction")
+        // High, allow with acknowledgement
         showWarning(`High risk detected. Proceed only if you understand the risks.`);
         $("#sendOut").textContent = `Risk score ${risk.score}. High risk — acknowledgement required.`;
         configureRiskModalActions({ score: risk.score, ofacHit: false });
@@ -502,10 +568,12 @@
   }
 
   async function doProceedAfterRisk(){
+    const chain = currentChain();
+    if (chain.type !== "evm") return; // guard
     const ctx = state.pendingTx;
     if(!ctx){ closeRiskModal(); return; }
 
-    // If we have a hard block, never proceed (guard)
+    // If we have a hard block, never proceed
     if (state.lastRisk && (state.lastRisk.blocked || state.lastRisk.score >= 90)) {
       return;
     }
@@ -515,7 +583,7 @@
 
     try{
       $("#sendOut").textContent = `Sending ${ctx.amount}…`;
-      if (!provider) provider = new ethers.JsonRpcProvider(CONFIG.CHAINS[state.chainKey].rpc(CONFIG.ALCHEMY_KEY));
+      if (!provider) provider = new ethers.JsonRpcProvider(currentChain().rpc(CONFIG.ALCHEMY_KEY));
       const acct = state.accounts[state.signerIndex];
       if(!acct) throw new Error("No wallet selected");
       const signer = acct.wallet.connect(provider);
@@ -524,7 +592,7 @@
       if (fee?.maxFeePerGas){ tx.maxFeePerGas = fee.maxFeePerGas; tx.maxPriorityFeePerGas = fee.maxPriorityFeePerGas; }
       try { tx.gasLimit = await signer.estimateGas(tx); } catch {}
       const sent = await signer.sendTransaction(tx);
-      const ex = CONFIG.CHAINS[state.chainKey].explorer;
+      const ex = currentChain().explorer;
       $("#sendOut").innerHTML = `Broadcasted: <a target="_blank" href="${ex}/tx/${sent.hash}">${sent.hash}</a>`;
       await sent.wait(1);
       loadRecentTxs().catch(()=>{});
@@ -556,7 +624,9 @@
         if(!v) return $("#unlockMsg").textContent="No vault found.";
         const pw=$("#unlockPassword").value;
         const payload=JSON.parse(v);
-        if (!await ensureEthersLoaded()) return $("#unlockMsg").textContent="Ethers not loaded. Check CSP.";
+        const chain = currentChain();
+        if (chain.type === "evm" && !await ensureEthersLoaded()) return $("#unlockMsg").textContent="Ethers not loaded. Switch to an EVM network or check CSP.";
+
         const phrase = await (async ()=>{ // decrypt
           const {ct,iv,salt} = payload.enc;
           const km = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), {name:"PBKDF2"}, false, ["deriveKey"]);
@@ -564,9 +634,17 @@
           const pt=await crypto.subtle.decrypt({name:"AES-GCM",iv:new Uint8Array(iv)}, key, new Uint8Array(ct));
           return new TextDecoder().decode(pt);
         })();
+
         state.decryptedPhrase = phrase;
         if (!localStorage.getItem("xwallet_accounts_n")) localStorage.setItem("xwallet_accounts_n","1");
-        loadAccountsFromPhrase(phrase);
+
+        // Only derive EVM wallets (this build). Non-EVM coming later.
+        if (currentChain().type === "evm"){
+          loadAccountsFromPhrase(phrase);
+        } else {
+          state.accounts = []; // keep empty list for non-EVM preview
+        }
+
         setChain(state.chainKey);
         state.unlocked = true;
         const ls=$("#lockState"); if(ls) ls.textContent="Unlocked";
