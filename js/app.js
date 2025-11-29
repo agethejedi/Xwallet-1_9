@@ -1,3 +1,8 @@
+if (typeof ethers === "undefined") {
+  alert("Crypto library failed to load. Check the ethers.js <script> tag URL.");
+  throw new Error("ethers.js not loaded");
+}
+
 // ========= STORAGE KEYS =========
 const LS_WALLETS_KEY = "xwallet_wallets_v1";
 const SS_CURRENT_ID_KEY = "xwallet_current_wallet_id_v1";
