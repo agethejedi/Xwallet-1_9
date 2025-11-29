@@ -130,7 +130,8 @@ body {
     background 0.15s ease,
     border-color 0.15s ease,
     color 0.15s ease,
-    transform 0.12s ease;
+    transform 0.12s ease,
+    box-shadow 0.15s ease;
 }
 
 .nav-item:hover {
@@ -143,6 +144,26 @@ body {
   background: radial-gradient(circle at top left, #22d3ee33, #0f172a);
   border-color: rgba(34, 211, 238, 0.9);
   color: var(--rx-text);
+}
+
+/* Wallets nav attention state */
+
+.nav-item-attention {
+  border-color: rgba(234, 179, 8, 0.9);
+  box-shadow: 0 0 12px rgba(250, 204, 21, 0.5);
+  animation: navPulse 1.3s ease-in-out infinite;
+}
+
+@keyframes navPulse {
+  0% {
+    box-shadow: 0 0 0 rgba(250, 204, 21, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(250, 204, 21, 0.9);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(250, 204, 21, 0.6);
+  }
 }
 
 .sidebar-wallet-actions {
@@ -867,6 +888,31 @@ body {
   overflow: hidden;
 }
 
+/* Enhanced Wallet Hub dialog */
+
+.wallet-hub-dialog {
+  max-width: 640px;
+  background:
+    radial-gradient(circle at top left, rgba(34, 211, 238, 0.22), transparent 60%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.99));
+  border-color: rgba(59, 130, 246, 0.9);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.85),
+    0 0 40px rgba(34, 211, 238, 0.4);
+}
+
+/* Wallet Hub hero blurb */
+
+.wallet-hub-hero {
+  margin-bottom: 8px;
+}
+
+.wallet-hub-hero-title {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: 0.05em;
+}
+
 .modal-header {
   display: flex;
   align-items: center;
@@ -915,37 +961,7 @@ body {
   color: #fecaca;
 }
 
-/* Gate screen */
-
-.wallet-gate {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: calc(100vh - 40px);
-}
-
-.wallet-gate-card {
-  max-width: 560px;
-  width: 100%;
-  border-radius: 18px;
-  border: 1px solid rgba(55, 65, 81, 0.9);
-  background:
-    radial-gradient(circle at top left, rgba(34, 211, 238, 0.22), transparent 60%),
-    linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.99));
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85);
-  padding: 18px 18px 16px;
-}
-
-.wallet-gate-title {
-  margin: 0 0 6px;
-  font-size: 18px;
-}
-
-.wallet-gate-subtitle {
-  margin: 0 0 12px;
-  font-size: 13px;
-  color: var(--rx-text-soft);
-}
+/* Gate-style wallet list inside hub */
 
 .wallet-gate-list {
   border-radius: 12px;
