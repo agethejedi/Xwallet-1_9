@@ -27,7 +27,7 @@
           <span>Dashboard</span>
         </button>
 
-        <!-- NEW: Wallets nav -->
+        <!-- Wallets nav -->
         <button class="nav-item" id="walletsNavBtn" data-view="wallets">
           <span>Wallets</span>
         </button>
@@ -60,29 +60,6 @@
 
     <!-- Main -->
     <main class="xwallet-main">
-      <!-- Gate screen: shown when no wallet is unlocked -->
-      <section id="walletGate" class="wallet-gate">
-        <div class="wallet-gate-card">
-          <h1 class="wallet-gate-title">Welcome to RiskXLabs X-Wallet</h1>
-          <p class="wallet-gate-subtitle">
-            Start by creating a new wallet or importing one with your 12-word seed phrase.
-            When wallets on this device are locked, you can unlock with your password
-            or seed phrase.
-          </p>
-
-          <div id="gateWalletList" class="wallet-gate-list" hidden></div>
-
-          <div class="wallet-gate-actions">
-            <button id="gateCreateBtn" class="primary-btn">
-              Create wallet
-            </button>
-            <button id="gateImportBtn" class="pill-btn-outline">
-              Import / Unlock with 12-word seed
-            </button>
-          </div>
-        </div>
-      </section>
-
       <!-- Top bar: network + current wallet (shown when unlocked) -->
       <header class="xwallet-topbar" id="walletTopbar" hidden>
         <div class="network-select-wrap">
@@ -212,6 +189,34 @@
     </main>
   </div>
 
+  <!-- Wallet Hub Popup (Create / Import / Unlock) -->
+  <div id="walletHubModal" class="modal" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-dialog">
+      <header class="modal-header">
+        <h2>Wallets</h2>
+        <button class="icon-btn modal-close" data-close-modal>✕</button>
+      </header>
+      <div class="modal-body">
+        <p class="modal-text">
+          Create a new wallet, import one with your 12-word seed phrase, or unlock
+          a wallet you’ve previously accessed using your password.
+        </p>
+
+        <div id="gateWalletList" class="wallet-gate-list" hidden></div>
+
+        <div class="wallet-gate-actions">
+          <button id="hubCreateBtn" class="primary-btn">
+            Create wallet
+          </button>
+          <button id="hubImportBtn" class="pill-btn-outline">
+            Import with 12-word seed
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Create wallet modal -->
   <div id="createWalletModal" class="modal" hidden>
     <div class="modal-backdrop" data-close-modal></div>
@@ -231,7 +236,7 @@
           <input id="cwLabel" class="input" placeholder="e.g. Primary wallet" />
         </div>
 
-        <!-- NEW: password field -->
+        <!-- Password for unlock -->
         <div class="modal-field">
           <label>Create password (min 8 chars, letters &amp; numbers)</label>
           <input id="cwPassword" class="input" type="password" />
@@ -267,12 +272,21 @@
         <p class="modal-text">
           Paste your 12-word seed phrase below. If it matches a wallet already
           stored on this device, we’ll unlock it. Otherwise we’ll import it as a
-          new wallet.
+          new wallet. You can also set a password for future unlocks.
         </p>
+
         <div class="modal-field">
           <label>Wallet label (for new wallets)</label>
           <input id="iwLabel" class="input" placeholder="e.g. Ledger wallet" />
         </div>
+
+        <!-- Password for unlock after import -->
+        <div class="modal-field">
+          <label>Create password (min 8 chars, letters &amp; numbers)</label>
+          <input id="iwPassword" class="input" type="password" />
+          <div id="iwPasswordError" class="modal-error" hidden></div>
+        </div>
+
         <div class="modal-field">
           <label>12-word seed phrase</label>
           <textarea
