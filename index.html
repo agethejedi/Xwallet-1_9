@@ -5,8 +5,8 @@
   <title>RiskXLabs X-Wallet</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="css/styles.css" />
+  <!-- Ethers for create/import/unlock (UI prototype) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
-  
 </head>
 <body>
   <div class="xwallet-shell">
@@ -26,6 +26,12 @@
         <button class="nav-item nav-item-active" data-view="dashboard">
           <span>Dashboard</span>
         </button>
+
+        <!-- NEW: Wallets nav -->
+        <button class="nav-item" id="walletsNavBtn" data-view="wallets">
+          <span>Wallets</span>
+        </button>
+
         <button class="nav-item" data-view="safesend">
           <span>SafeSend</span>
         </button>
@@ -48,7 +54,7 @@
 
       <div class="sidebar-footer">
         <span class="version-pill" id="xwalletVersion">v1.5.9</span>
-        <span class="status-pill" id="networkStatusPill">RPC: OK</span>
+        <span class="status-pill" id="networkStatusPill">RPC: DISCONNECTED</span>
       </div>
     </aside>
 
@@ -60,7 +66,8 @@
           <h1 class="wallet-gate-title">Welcome to RiskXLabs X-Wallet</h1>
           <p class="wallet-gate-subtitle">
             Start by creating a new wallet or importing one with your 12-word seed phrase.
-            When wallets on this device are locked, you can unlock them with the same seed.
+            When wallets on this device are locked, you can unlock with your password
+            or seed phrase.
           </p>
 
           <div id="gateWalletList" class="wallet-gate-list" hidden></div>
@@ -107,7 +114,7 @@
         </div>
       </header>
 
-      <!-- Hero banner -->
+      <!-- Hero banner (shown when unlocked) -->
       <section class="xwallet-hero" id="walletHero" hidden>
         <div class="xwallet-hero-text">
           <h2 class="xwallet-hero-title">
@@ -122,7 +129,7 @@
         </div>
       </section>
 
-      <!-- Dashboard content -->
+      <!-- Dashboard content (shown when unlocked) -->
       <section class="xwallet-content" id="walletDashboard" hidden>
         <!-- Left: holdings by wallet -->
         <section class="panel panel-balance">
@@ -156,7 +163,7 @@
           </div>
         </section>
 
-        <!-- Right: SafeSend / risk -->
+        <!-- Right: SafeSend / risk (UI only for now) -->
         <section class="panel panel-risk">
           <div class="panel-header">
             <h3>SafeSend Risk</h3>
@@ -218,14 +225,24 @@
           This 12-word phrase is the only way to recover this wallet.
           Store it somewhere safe. We never store it for you.
         </p>
+
         <div class="modal-field">
           <label>Wallet label</label>
           <input id="cwLabel" class="input" placeholder="e.g. Primary wallet" />
         </div>
+
+        <!-- NEW: password field -->
+        <div class="modal-field">
+          <label>Create password (min 8 chars, letters &amp; numbers)</label>
+          <input id="cwPassword" class="input" type="password" />
+          <div id="cwPasswordError" class="modal-error" hidden></div>
+        </div>
+
         <div class="modal-field">
           <label>12-word seed phrase</label>
           <textarea id="cwMnemonic" class="input input-multiline" readonly></textarea>
         </div>
+
         <div class="modal-field">
           <label>Address</label>
           <div id="cwAddress" class="address-value address-value-solid"></div>
