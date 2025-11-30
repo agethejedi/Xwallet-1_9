@@ -1354,3 +1354,58 @@ body {
 #walletTopbar[hidden] {
   display: none !important;
 }
+
+/* Brighten wallet accordion toggle (+ / -) */
+.wallet-toggle {
+  color: #e5e7eb !important;   /* bright gray */
+  font-weight: 600;
+}
+
+/* Brighten Action column header */
+.header-action {
+  color: #e5e7eb !important;
+  font-weight: 600;
+}
+/* Unified grid layout for header + data rows */
+.holding-row,
+.holding-row-header {
+  display: grid;
+  grid-template-columns:
+    40px       /* logo */
+    1.5fr      /* asset name */
+    1fr        /* amount */
+    1fr        /* USD value */
+    1fr        /* 24h change */
+    90px;      /* action menu */
+  align-items: center;
+  column-gap: 16px;
+  padding: 8px 0;
+}
+
+/* Header row text alignment */
+.holding-row-header span {
+  color: #e5e7eb !important;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+/* Align numeric columns right for cleaner reading */
+.holding-amount,
+.holding-value,
+.holding-change {
+  text-align: right;
+}
+
+/* Action column alignment */
+.header-action,
+.holding-action {
+  text-align: right;
+}
+
+/* Logo sizing */
+.holding-asset-logo img {
+  width: 28px;
+  height: 28px;
+}
