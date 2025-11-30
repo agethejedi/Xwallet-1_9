@@ -11,6 +11,7 @@ const SS_CURRENT_ID_KEY = "xwallet_current_wallet_id_v1";
 // ===== STATE =====
 let wallets = [];
 let currentWalletId = null;
+let pendingUnlockWalletId = null;
 
 // ===== DOM ELEMENTS =====
 const walletTopbar = document.getElementById("walletTopbar");
@@ -48,6 +49,14 @@ const iwPasswordEl = document.getElementById("iwPassword");
 const iwPasswordErrorEl = document.getElementById("iwPasswordError");
 const iwErrorEl = document.getElementById("iwError");
 const iwImportBtn = document.getElementById("iwImportBtn");
+
+// Unlock wallet modal
+const unlockWalletModal = document.getElementById("unlockWalletModal");
+const uwLabelEl = document.getElementById("uwLabel");
+const uwAddressEl = document.getElementById("uwAddress");
+const uwPasswordEl = document.getElementById("uwPassword");
+const uwPasswordErrorEl = document.getElementById("uwPasswordError");
+const uwConfirmBtn = document.getElementById("uwConfirmBtn");
 
 const networkSelect = document.getElementById("networkSelect");
 
@@ -158,16 +167,19 @@ function hideWalletHub() {
 
 function updateAppVisibility() {
   const hasUnlocked = !!currentWalletId;
+
   if (hasUnlocked) {
     walletTopbar.hidden = false;
     walletHero.hidden = false;
     walletDashboard.hidden = false;
     hideWalletHub();
+    if (walletsNavBtn) walletsNavBtn.classList.remove("nav-item-attention");
   } else {
     walletTopbar.hidden = true;
     walletHero.hidden = true;
     walletDashboard.hidden = true;
     showWalletHub();
+    if (walletsNavBtn) walletsNavBtn.classList.add("nav-item-attention");
   }
 }
 
@@ -205,18 +217,22 @@ function renderWallets() {
         </div>
       </button>
       <div class="wallet-holdings" hidden>
-        <div class="holding-row holding-row-header">
-          <span>Asset</span>
-          <span></span>
-          <span>Amount</span>
-          <span>Value (USD)</span>
-          <span>24h Change</span>
-          <span>Action</span>
-        </div>
       </div>
     `;
 
     const holdingsContainer = card.querySelector(".wallet-holdings");
+
+    // Header row: Asset | Amount | Value (USD) | 24h Change | Action
+    holdingsContainer.innerHTML = `
+      <div class="holding-row holding-row-header">
+        <span class="header-asset">Asset</span>
+        <span class="header-amount">Amount</span>
+        <span class="header-value">Value (USD)</span>
+        <span class="header-change">24h Change</span>
+        <span class="header-action">Action</span>
+      </div>
+    `;
+
     (wallet.holdings || []).forEach((h, index) => {
       const hChangeClass =
         h.change24hPct > 0 ? "positive" : h.change24hPct < 0 ? "negative" : "";
@@ -525,7 +541,17 @@ iwImportBtn.addEventListener("click", () => {
   }
 });
 
-// ===== UNLOCK BY PASSWORD FROM HUB LIST =====
+// ===== UNLOCK BY PASSWORD (Wallet Hub -> Unlock modal) =====
+function openUnlockModalForWallet(wallet) {
+  pendingUnlockWalletId = wallet.id;
+  uwLabelEl.textContent = wallet.label;
+  uwAddressEl.textContent = wallet.address;
+  uwPasswordEl.value = "";
+  uwPasswordErrorEl.textContent = "";
+  uwPasswordErrorEl.setAttribute("hidden", "");
+  openModal(unlockWalletModal);
+}
+
 document.addEventListener("click", (e) => {
   const unlockBtn = e.target.closest("[data-gate-unlock]");
   if (!unlockBtn) return;
@@ -541,15 +567,37 @@ document.addEventListener("click", (e) => {
     return;
   }
 
-  const entered = prompt("Enter password for this wallet:");
-  if (entered === null) return;
+  openUnlockModalForWallet(wallet);
+});
 
-  if (entered.trim() !== wallet.password) {
-    alert("Incorrect password.");
+uwConfirmBtn.addEventListener("click", () => {
+  if (!pendingUnlockWalletId) return;
+  const wallet = getWalletById(pendingUnlockWalletId);
+  if (!wallet) {
+    pendingUnlockWalletId = null;
+    closeModal(unlockWalletModal);
+    return;
+  }
+
+  const entered = uwPasswordEl.value.trim();
+  uwPasswordErrorEl.textContent = "";
+  uwPasswordErrorEl.setAttribute("hidden", "");
+
+  if (!entered) {
+    uwPasswordErrorEl.textContent = "Password is required.";
+    uwPasswordErrorEl.removeAttribute("hidden");
+    return;
+  }
+
+  if (entered !== wallet.password) {
+    uwPasswordErrorEl.textContent = "Incorrect password.";
+    uwPasswordErrorEl.removeAttribute("hidden");
     return;
   }
 
   // Success
+  pendingUnlockWalletId = null;
+  closeModal(unlockWalletModal);
   setCurrentWallet(wallet.id);
   renderWallets();
 });
