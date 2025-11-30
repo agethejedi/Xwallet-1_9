@@ -7,16 +7,19 @@ if (typeof ethers === "undefined") {
 // ===== STORAGE KEYS =====
 const LS_WALLETS_KEY = "xwallet_wallets_v1";
 const SS_CURRENT_ID_KEY = "xwallet_current_wallet_id_v1";
+const LS_SAFESEND_HISTORY_KEY = "xwallet_safesend_history_v1";
 
 // ===== STATE =====
 let wallets = [];
 let currentWalletId = null;
 let pendingUnlockWalletId = null;
+let safesendHistory = [];
 
 // ===== DOM ELEMENTS =====
 const walletTopbar = document.getElementById("walletTopbar");
 const walletHero = document.getElementById("walletHero");
 const walletDashboard = document.getElementById("walletDashboard");
+const safesendPage = document.getElementById("safesendPage");
 
 const walletAddressEl = document.getElementById("walletAddress");
 const fiatBalanceLabelEl = document.getElementById("fiatBalanceLabel");
@@ -25,6 +28,7 @@ const walletsContainer = document.getElementById("walletsContainer");
 const createWalletBtn = document.getElementById("createWalletBtn");
 const importWalletBtn = document.getElementById("importWalletBtn");
 const walletsNavBtn = document.getElementById("walletsNavBtn");
+const navButtons = document.querySelectorAll(".sidebar-nav .nav-item");
 
 // Wallet Hub modal (popup)
 const walletHubModal = document.getElementById("walletHubModal");
@@ -58,6 +62,20 @@ const uwPasswordEl = document.getElementById("uwPassword");
 const uwPasswordErrorEl = document.getElementById("uwPasswordError");
 const uwConfirmBtn = document.getElementById("uwConfirmBtn");
 
+// SafeSend page elements
+const ssWalletSelect = document.getElementById("ssWalletSelect");
+const ssAssetSelect = document.getElementById("ssAssetSelect");
+const safesendScoreBadge = document.getElementById("safesendScoreBadge");
+const riskGaugeDial = document.getElementById("riskGaugeDial");
+const riskGaugeLabel = document.getElementById("riskGaugeLabel");
+const riskHighlightsList = document.getElementById("riskHighlightsList");
+const recipientInput = document.getElementById("recipientInput");
+const runSafeSendBtn = document.getElementById("runSafeSendBtn");
+const clearSafesendHistoryBtn = document.getElementById(
+  "clearSafesendHistoryBtn"
+);
+const safesendHistoryList = document.getElementById("safesendHistoryList");
+
 const networkSelect = document.getElementById("networkSelect");
 
 // ===== UTIL =====
@@ -75,6 +93,7 @@ function formatUsd(x) {
   })}`;
 }
 
+// ===== LOAD / SAVE =====
 function loadWallets() {
   try {
     const raw = localStorage.getItem(LS_WALLETS_KEY);
@@ -101,10 +120,77 @@ function saveWallets() {
   localStorage.setItem(LS_WALLETS_KEY, JSON.stringify(wallets));
 }
 
+function loadSafesendHistory() {
+  try {
+    const raw = localStorage.getItem(LS_SAFESEND_HISTORY_KEY);
+    safesendHistory = raw ? JSON.parse(raw) : [];
+  } catch {
+    safesendHistory = [];
+  }
+}
+
+function saveSafesendHistory() {
+  localStorage.setItem(LS_SAFESEND_HISTORY_KEY, JSON.stringify(safesendHistory));
+}
+
 function getWalletById(id) {
   return wallets.find((w) => w.id === id);
 }
 
+// ===== VIEW MANAGEMENT =====
+let currentView = "dashboard";
+
+function setView(view) {
+  // Wallets tab is special: always opens the Wallet Hub popup
+  if (view === "wallets") {
+    showWalletHub();
+    return;
+  }
+
+  const hasUnlocked = !!currentWalletId;
+
+  // If no wallet unlocked, force dashboard + hub
+  if (!hasUnlocked && view !== "dashboard") {
+    currentView = "dashboard";
+    walletDashboard.hidden = true;
+    safesendPage.hidden = true;
+    updateAppVisibility(); // will show hub
+    // visually keep Dashboard active
+    navButtons.forEach((btn) => {
+      const v = btn.dataset.view;
+      btn.classList.toggle("nav-item-active", v === "dashboard");
+    });
+    return;
+  }
+
+  currentView = view;
+
+  if (view === "dashboard") {
+    walletDashboard.hidden = false;
+    safesendPage.hidden = true;
+  } else if (view === "safesend") {
+    walletDashboard.hidden = true;
+    safesendPage.hidden = false;
+  }
+
+  navButtons.forEach((btn) => {
+    const v = btn.dataset.view;
+    if (v === "wallets") return; // never mark Wallets as active
+    btn.classList.toggle("nav-item-active", v === view);
+  });
+
+  updateAppVisibility();
+}
+
+// hook nav buttons
+navButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const view = btn.dataset.view;
+    setView(view);
+  });
+});
+
+// ===== HEADER / APP VISIBILITY =====
 function setCurrentWallet(id) {
   currentWalletId = id;
   if (id) {
@@ -114,6 +200,7 @@ function setCurrentWallet(id) {
   }
   refreshHeader();
   updateAppVisibility();
+  populateSafesendSelectors(); // keep dropdowns in sync
 }
 
 function refreshHeader() {
@@ -125,6 +212,34 @@ function refreshHeader() {
   }
   walletAddressEl.textContent = wallet.address;
   fiatBalanceLabelEl.textContent = formatUsd(wallet.totalUsd || 0);
+}
+
+function updateAppVisibility() {
+  const hasUnlocked = !!currentWalletId;
+
+  if (hasUnlocked) {
+    walletTopbar.hidden = false;
+    walletHero.hidden = false;
+
+    // show current view
+    if (currentView === "safesend") {
+      safesendPage.hidden = false;
+      walletDashboard.hidden = true;
+    } else {
+      walletDashboard.hidden = false;
+      safesendPage.hidden = true;
+    }
+
+    hideWalletHub();
+    if (walletsNavBtn) walletsNavBtn.classList.remove("nav-item-attention");
+  } else {
+    walletTopbar.hidden = true;
+    walletHero.hidden = true;
+    walletDashboard.hidden = true;
+    safesendPage.hidden = true;
+    showWalletHub();
+    if (walletsNavBtn) walletsNavBtn.classList.add("nav-item-attention");
+  }
 }
 
 // ===== WALLET HUB POPUP =====
@@ -163,24 +278,6 @@ function showWalletHub() {
 
 function hideWalletHub() {
   if (walletHubModal) walletHubModal.setAttribute("hidden", "");
-}
-
-function updateAppVisibility() {
-  const hasUnlocked = !!currentWalletId;
-
-  if (hasUnlocked) {
-    walletTopbar.hidden = false;
-    walletHero.hidden = false;
-    walletDashboard.hidden = false;
-    hideWalletHub();
-    if (walletsNavBtn) walletsNavBtn.classList.remove("nav-item-attention");
-  } else {
-    walletTopbar.hidden = true;
-    walletHero.hidden = true;
-    walletDashboard.hidden = true;
-    showWalletHub();
-    if (walletsNavBtn) walletsNavBtn.classList.add("nav-item-attention");
-  }
 }
 
 // ===== RENDER WALLETS & HOLDINGS =====
@@ -275,6 +372,7 @@ function renderWallets() {
 
   fiatBalanceLabelEl.textContent = formatUsd(total);
   refreshHeader();
+  populateSafesendSelectors();
 }
 
 // Expand / collapse wallet
@@ -297,7 +395,7 @@ walletsContainer.addEventListener("click", (e) => {
   setCurrentWallet(card.dataset.walletId);
 });
 
-// Action menu + SafeSend stub
+// Action menu + SafeSend trigger
 document.addEventListener("click", (e) => {
   // Close menus if clicked outside
   if (!e.target.closest(".holding-action")) {
@@ -341,12 +439,251 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// SafeSend stub (UI only)
+// ===== SAFE SEND PAGE HELPERS =====
+function populateSafesendSelectors() {
+  if (!ssWalletSelect || !ssAssetSelect) return;
+
+  // Remember previous selections (if any)
+  const prevWalletId = ssWalletSelect.value || currentWalletId;
+  const prevAssetKey = ssAssetSelect.value;
+
+  ssWalletSelect.innerHTML = "";
+  ssAssetSelect.innerHTML = "";
+
+  if (!wallets.length) {
+    ssWalletSelect.innerHTML = `<option value="">No wallets yet</option>`;
+    ssAssetSelect.innerHTML = `<option value="">No holdings</option>`;
+    return;
+  }
+
+  wallets.forEach((w) => {
+    const opt = document.createElement("option");
+    opt.value = w.id;
+    opt.textContent = w.label;
+    ssWalletSelect.appendChild(opt);
+  });
+
+  const walletToUse =
+    wallets.find((w) => w.id === prevWalletId) ||
+    wallets.find((w) => w.id === currentWalletId) ||
+    wallets[0];
+  ssWalletSelect.value = walletToUse.id;
+
+  populateAssetsForWallet(walletToUse.id, prevAssetKey);
+}
+
+function populateAssetsForWallet(walletId, prevAssetKey) {
+  if (!ssAssetSelect) return;
+  ssAssetSelect.innerHTML = "";
+
+  const wallet = getWalletById(walletId);
+  if (!wallet || !wallet.holdings.length) {
+    ssAssetSelect.innerHTML = `<option value="">No holdings</option>`;
+    return;
+  }
+
+  wallet.holdings.forEach((h, index) => {
+    const key = `${wallet.id}:${index}`;
+    const opt = document.createElement("option");
+    opt.value = key;
+    opt.textContent = `${h.symbol} — ${h.name}`;
+    ssAssetSelect.appendChild(opt);
+  });
+
+  // restore selection if possible
+  if (prevAssetKey && [...ssAssetSelect.options].some((o) => o.value === prevAssetKey)) {
+    ssAssetSelect.value = prevAssetKey;
+  } else {
+    ssAssetSelect.value = `${wallet.id}:0`;
+  }
+}
+
+if (ssWalletSelect) {
+  ssWalletSelect.addEventListener("change", (e) => {
+    populateAssetsForWallet(e.target.value, null);
+  });
+}
+
 function startSafeSendForHolding(wallet, holding) {
-  console.log("SafeSend (stub) for", wallet.label, holding.symbol);
-  alert(
-    `SafeSend (stub): would run risk check for ${holding.symbol} from ${wallet.address}`
-  );
+  // Switch view
+  setView("safesend");
+
+  // Ensure dropdowns are populated
+  populateSafesendSelectors();
+
+  // Select the wallet & asset in dropdowns
+  if (ssWalletSelect) {
+    ssWalletSelect.value = wallet.id;
+    const holdingIndex = (wallet.holdings || []).findIndex(
+      (h) => h.symbol === holding.symbol && h.name === holding.name
+    );
+    const key =
+      holdingIndex >= 0 ? `${wallet.id}:${holdingIndex}` : `${wallet.id}:0`;
+    populateAssetsForWallet(wallet.id, key);
+  }
+
+  // Clear / focus recipient input
+  if (recipientInput) {
+    recipientInput.focus();
+  }
+}
+
+// ===== SAFE SEND SCORE / HISTORY (stub) =====
+function classifyScore(score) {
+  if (score === null || score === undefined) return "neutral";
+  if (score >= 80) return "good";
+  if (score >= 50) return "warn";
+  return "bad";
+}
+
+function updateRiskGauge(score) {
+  if (!riskGaugeLabel || !safesendScoreBadge) return;
+
+  if (score === null) {
+    riskGaugeLabel.textContent = "--";
+    safesendScoreBadge.textContent = "Score: -- / 100";
+    safesendScoreBadge.className = "risk-badge risk-badge-neutral";
+    return;
+  }
+
+  riskGaugeLabel.textContent = score.toString();
+  safesendScoreBadge.textContent = `Score: ${score} / 100`;
+
+  const level = classifyScore(score);
+  safesendScoreBadge.className = "risk-badge";
+  if (level === "good") safesendScoreBadge.classList.add("risk-badge-good");
+  else if (level === "warn") safesendScoreBadge.classList.add("risk-badge-warn");
+  else if (level === "bad") safesendScoreBadge.classList.add("risk-badge-bad");
+  else safesendScoreBadge.classList.add("risk-badge-neutral");
+
+  // simple highlight list (stub)
+  if (riskHighlightsList) {
+    riskHighlightsList.innerHTML = "";
+    const li = document.createElement("li");
+    li.textContent =
+      level === "good"
+        ? "No obvious red flags detected (stub scoring)."
+        : level === "warn"
+        ? "Some moderate risk indicators (stub scoring)."
+        : level === "bad"
+        ? "High-risk pattern detected (stub scoring)."
+        : "Awaiting SafeSend check.";
+    riskHighlightsList.appendChild(li);
+  }
+}
+
+function renderSafesendHistory() {
+  if (!safesendHistoryList) return;
+
+  safesendHistoryList.innerHTML = "";
+
+  if (!safesendHistory.length) {
+    const empty = document.createElement("div");
+    empty.className = "safesend-history-row";
+    empty.innerHTML =
+      '<div class="safesend-history-main"><div class="safesend-history-meta">No SafeSend checks yet.</div></div>';
+    safesendHistoryList.appendChild(empty);
+    return;
+  }
+
+  safesendHistory
+    .slice()
+    .reverse()
+    .forEach((entry) => {
+      const row = document.createElement("div");
+      row.className = "safesend-history-row";
+
+      const main = document.createElement("div");
+      main.className = "safesend-history-main";
+      main.innerHTML = `
+        <div class="safesend-history-address">${entry.address}</div>
+        <div class="safesend-history-meta">
+          Wallet: ${entry.walletLabel} · Asset: ${entry.assetSymbol}
+        </div>
+      `;
+
+      const right = document.createElement("div");
+      const scoreClass =
+        entry.scoreCategory === "good"
+          ? "good"
+          : entry.scoreCategory === "warn"
+          ? "warn"
+          : entry.scoreCategory === "bad"
+          ? "bad"
+          : "";
+      right.innerHTML = `
+        <div class="safesend-history-score ${scoreClass}">
+          ${entry.score}/100
+        </div>
+        ${
+          entry.alertText
+            ? `<div class="safesend-history-alert">${entry.alertText}</div>`
+            : ""
+        }
+      `;
+
+      row.appendChild(main);
+      row.appendChild(right);
+      safesendHistoryList.appendChild(row);
+    });
+}
+
+if (runSafeSendBtn) {
+  runSafeSendBtn.addEventListener("click", () => {
+    const address = (recipientInput && recipientInput.value.trim()) || "";
+    if (!address) {
+      alert("Paste a recipient address or ENS first.");
+      return;
+    }
+
+    const walletId = ssWalletSelect ? ssWalletSelect.value : null;
+    const assetKey = ssAssetSelect ? ssAssetSelect.value : null;
+    const wallet = walletId && getWalletById(walletId);
+
+    let assetSymbol = "";
+    if (wallet && assetKey && assetKey.includes(":")) {
+      const idx = Number(assetKey.split(":")[1]);
+      const holding = wallet.holdings[idx];
+      if (holding) assetSymbol = holding.symbol;
+    }
+
+    // Stub: random-ish score for now; engine will override later
+    const score = Math.floor(60 + Math.random() * 35); // 60–94
+    const scoreCategory = classifyScore(score);
+
+    // Look for previous entry for this address
+    const previous = safesendHistory.find(
+      (e) => e.address.toLowerCase() === address.toLowerCase()
+    );
+    let alertText = "";
+    if (previous && previous.score !== score) {
+      alertText = `Score changed from ${previous.score} to ${score}.`;
+    }
+
+    const entry = {
+      address,
+      walletLabel: wallet ? wallet.label : "Unknown wallet",
+      assetSymbol: assetSymbol || "Unknown asset",
+      score,
+      scoreCategory,
+      alertText,
+      timestamp: Date.now()
+    };
+    safesendHistory.push(entry);
+    saveSafesendHistory();
+    renderSafesendHistory();
+    updateRiskGauge(score);
+  });
+}
+
+if (clearSafesendHistoryBtn) {
+  clearSafesendHistoryBtn.addEventListener("click", () => {
+    if (!confirm("Clear all SafeSend history on this device?")) return;
+    safesendHistory = [];
+    saveSafesendHistory();
+    renderSafesendHistory();
+    updateRiskGauge(null);
+  });
 }
 
 // ===== MODAL HELPERS =====
@@ -602,13 +939,6 @@ uwConfirmBtn.addEventListener("click", () => {
   renderWallets();
 });
 
-// ===== WALLET NAV BUTTON: relaunch hub popup =====
-if (walletsNavBtn) {
-  walletsNavBtn.addEventListener("click", () => {
-    showWalletHub();
-  });
-}
-
 // ===== NETWORK SELECT (STUB) =====
 if (networkSelect) {
   networkSelect.addEventListener("change", (e) => {
@@ -618,6 +948,7 @@ if (networkSelect) {
 
 // ===== INIT =====
 loadWallets();
+loadSafesendHistory();
 
 // Seed demo wallet if none exist (for visual testing)
 if (!wallets.length) {
@@ -655,4 +986,6 @@ if (!wallets.length) {
 }
 
 renderWallets();
-updateAppVisibility();
+renderSafesendHistory();
+updateRiskGauge(null);
+setView("dashboard");
