@@ -43,10 +43,10 @@ function mapNetworkForRiskEngine(uiValue) {
 const ALCHEMY_API_KEY = "kxHg5y9yBXWAb9cOcJsf0"; // <-- PUT YOUR REAL ALCHEMY KEY HERE
 
 function getRpcUrlForNetwork(uiValue) {
-  if (!ALCHEMY_API_KEY || ALCHEMY_API_KEY === "kxHg5y9yBXWAb9cOcJsf0") {
+  // Only check if a key exists at all
+  if (!ALCHEMY_API_KEY) {
     return null;
   }
-
   if (uiValue === "ethereum-mainnet") {
     return `https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
   }
