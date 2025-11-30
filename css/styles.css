@@ -371,7 +371,7 @@ body {
 .xwallet-hero-subtitle {
   margin: 0;
   font-size: 13px;
-  color: var(--rx-text-soft);
+  color: #e5e7eb; /* brighter */
   line-height: 1.5;
 }
 
@@ -553,6 +553,10 @@ body {
   grid-gap: 16px;
 }
 
+.xwallet-content-single {
+  grid-template-columns: minmax(0, 1.6fr); /* SafeSend full-width */
+}
+
 /* Panels */
 
 .panel {
@@ -588,7 +592,7 @@ body {
 .panel-subtitle {
   margin: 2px 0 0;
   font-size: 13px;
-  color: var(--rx-text-soft);
+  color: #e5e7eb; /* brighter */
 }
 
 .panel-body {
@@ -616,6 +620,10 @@ body {
 }
 
 /* Risk panel */
+
+.panel-risk-full {
+  min-height: 360px;
+}
 
 .risk-badge {
   font-size: 11px;
@@ -717,6 +725,106 @@ body {
   color: var(--rx-text-soft);
 }
 
+/* SafeSend dedicated page layout */
+
+.safesend-select-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.safesend-select-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.safesend-select-group label {
+  color: var(--rx-text-soft);
+}
+
+.safesend-select {
+  min-width: 200px;
+}
+
+.safesend-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.5fr);
+  gap: 16px;
+  align-items: flex-start;
+}
+
+/* SafeSend history */
+
+.safesend-history-footer {
+  border-top: 1px solid rgba(30, 64, 175, 0.6);
+}
+
+.safesend-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.safesend-history-list {
+  margin-top: 8px;
+  max-height: 140px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.safesend-history-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.96);
+}
+
+.safesend-history-row:last-child {
+  border-bottom: none;
+}
+
+.safesend-history-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.safesend-history-address {
+  font-family: "SF Mono", ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 11px;
+}
+
+.safesend-history-meta {
+  font-size: 11px;
+  color: var(--rx-text-soft);
+}
+
+.safesend-history-score {
+  font-variant-numeric: tabular-nums;
+}
+
+.safesend-history-score.good {
+  color: var(--rx-good);
+}
+
+.safesend-history-score.warn {
+  color: #fde047;
+}
+
+.safesend-history-score.bad {
+  color: #f97373;
+}
+
+.safesend-history-alert {
+  font-size: 11px;
+  color: #f97373;
+}
+
 /* Holdings by wallet */
 
 .wallets-header-row {
@@ -734,7 +842,7 @@ body {
 
 .wallets-hint {
   font-size: 11px;
-  color: var(--rx-text-soft);
+  color: #e5e7eb; /* brighter */
 }
 
 .wallets-plus {
@@ -850,13 +958,13 @@ body {
   color: var(--rx-text-soft);
 }
 
-/* Header row: keep headings on one line, aligned with columns */
+/* Header row: align with logo+name grid */
 .holding-row.holding-row-header span {
   text-align: right;
 }
 
 .holding-row-header .header-asset {
-  grid-column: 1 / span 2;  /* spans logo + name column */
+  grid-column: 1 / span 2; /* covers logo+name columns */
   text-align: left;
 }
 
@@ -1171,7 +1279,8 @@ body {
     padding: 10px 10px 16px;
   }
 
-  .xwallet-content {
+  .xwallet-content,
+  .xwallet-content-single {
     grid-template-columns: 1fr;
   }
 
@@ -1211,5 +1320,13 @@ body {
 
   .modal-dialog {
     margin: 40px 10px;
+  }
+
+  .safesend-main {
+    grid-template-columns: 1fr;
+  }
+
+  .safesend-select {
+    min-width: 0;
   }
 }
