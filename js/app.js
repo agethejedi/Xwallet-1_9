@@ -1,3 +1,5 @@
+// app.js — X-Wallet UI + SafeSend wired to Risk Engine
+
 // ===== SAFETY: ethers presence =====
 if (typeof ethers === "undefined") {
   alert("Crypto library failed to load. Check the ethers.js <script> tag URL.");
@@ -8,6 +10,33 @@ if (typeof ethers === "undefined") {
 const LS_WALLETS_KEY = "xwallet_wallets_v1";
 const SS_CURRENT_ID_KEY = "xwallet_current_wallet_id_v1";
 const LS_SAFESEND_HISTORY_KEY = "xwallet_safesend_history_v1";
+
+// ===== RISK ENGINE CONFIG =====
+const RISK_ENGINE_BASE_URL = "https://riskxlabs-vision-api.agedotcom.workers.dev/"; // <-- CHANGE THIS
+
+function mapNetworkForRiskEngine(uiValue) {
+  switch (uiValue) {
+    case "ethereum-mainnet":
+    case "sepolia":
+      return "eth";
+    case "polygon-pos":
+      return "polygon";
+    case "arbitrum":
+      return "arbitrum";
+    case "polygon-zkevm":
+      return "polygon-zkevm";
+    case "linea":
+      return "linea";
+    case "base":
+      return "base";
+    case "solana":
+      return "sol";
+    case "tron":
+      return "tron";
+    default:
+      return "eth";
+  }
+}
 
 // ===== STATE =====
 let wallets = [];
@@ -30,7 +59,15 @@ const importWalletBtn = document.getElementById("importWalletBtn");
 const walletsNavBtn = document.getElementById("walletsNavBtn");
 const navButtons = document.querySelectorAll(".sidebar-nav .nav-item");
 
-// Wallet Hub modal (popup)
+const copyAddressBtn = document.getElementById("copyAddressBtn");
+const switchAccountBtn = document.getElementById("switchAccountBtn");
+const receiveBtn = document.getElementById("receiveBtn");
+const sendBtn = document.getElementById("sendBtn");
+const networkStatusPill = document.getElementById("networkStatusPill");
+
+const networkSelect = document.getElementById("networkSelect");
+
+// Wallet Hub popup
 const walletHubModal = document.getElementById("walletHubModal");
 const gateWalletList = document.getElementById("gateWalletList");
 const hubCreateBtn = document.getElementById("hubCreateBtn");
@@ -62,7 +99,7 @@ const uwPasswordEl = document.getElementById("uwPassword");
 const uwPasswordErrorEl = document.getElementById("uwPasswordError");
 const uwConfirmBtn = document.getElementById("uwConfirmBtn");
 
-// SafeSend page elements
+// SafeSend page
 const ssWalletSelect = document.getElementById("ssWalletSelect");
 const ssAssetSelect = document.getElementById("ssAssetSelect");
 const safesendScoreBadge = document.getElementById("safesendScoreBadge");
@@ -75,12 +112,11 @@ const clearSafesendHistoryBtn = document.getElementById(
   "clearSafesendHistoryBtn"
 );
 const safesendHistoryList = document.getElementById("safesendHistoryList");
-
-const networkSelect = document.getElementById("networkSelect");
+const viewFullReportBtn = document.getElementById("viewFullReportBtn");
 
 // ===== UTIL =====
 function formatPct(p) {
-  if (p === null || p === undefined) return "--";
+  if (p === null || p === undefined || Number.isNaN(p)) return "--";
   const sign = p > 0 ? "+" : "";
   return `${sign}${p.toFixed(2)}%`;
 }
@@ -89,7 +125,7 @@ function formatUsd(x) {
   if (x === null || x === undefined || Number.isNaN(x)) return "$0.00";
   return `$${x.toLocaleString(undefined, {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2
+    maximumFractionDigits: 2,
   })}`;
 }
 
@@ -102,7 +138,6 @@ function loadWallets() {
     wallets = [];
   }
 
-  // Normalize shape
   wallets.forEach((w) => {
     if (!Array.isArray(w.holdings)) w.holdings = [];
     if (typeof w.password === "undefined") w.password = null;
@@ -130,7 +165,10 @@ function loadSafesendHistory() {
 }
 
 function saveSafesendHistory() {
-  localStorage.setItem(LS_SAFESEND_HISTORY_KEY, JSON.stringify(safesendHistory));
+  localStorage.setItem(
+    LS_SAFESEND_HISTORY_KEY,
+    JSON.stringify(safesendHistory)
+  );
 }
 
 function getWalletById(id) {
@@ -140,62 +178,6 @@ function getWalletById(id) {
 // ===== VIEW MANAGEMENT =====
 let currentView = "dashboard";
 
-function setView(view) {
-  // Wallets nav: always opens Wallet Hub popup instead of switching page
-  if (view === "wallets") {
-    showWalletHub();
-    return;
-  }
-
-  const hasUnlocked = !!currentWalletId;
-  currentView = view;
-
-  // Always hide both content sections first
-  if (walletDashboard) {
-    walletDashboard.hidden = true;
-    walletDashboard.classList.remove("active-view");
-  }
-  if (safesendPage) {
-    safesendPage.hidden = true;
-    safesendPage.classList.remove("active-view");
-  }
-
-  // If no wallet is unlocked yet, just handle chrome & hub visibility
-  if (!hasUnlocked) {
-    updateAppVisibility();
-    return;
-  }
-
-  // Show the requested view
-  if (view === "safesend" && safesendPage) {
-    safesendPage.hidden = false;
-    safesendPage.classList.add("active-view");
-  } else if (walletDashboard) {
-    // default to dashboard
-    walletDashboard.hidden = false;
-    walletDashboard.classList.add("active-view");
-  }
-
-  // Update left nav highlighting (Wallets never shows as active)
-  navButtons.forEach((btn) => {
-    const v = btn.dataset.view;
-    if (v === "wallets") return;
-    btn.classList.toggle("nav-item-active", v === view);
-  });
-
-  // Ensure hero/topbar vs hub state is consistent
-  updateAppVisibility();
-}
-
-// hook nav buttons
-navButtons.forEach((btn) => {
-  btn.addEventListener("click", () => {
-    const view = btn.dataset.view;
-    setView(view);
-  });
-});
-
-// ===== HEADER / APP VISIBILITY =====
 function setCurrentWallet(id) {
   currentWalletId = id;
   if (id) {
@@ -205,7 +187,7 @@ function setCurrentWallet(id) {
   }
   refreshHeader();
   updateAppVisibility();
-  populateSafesendSelectors(); // keep dropdowns in sync
+  populateSafesendSelectors();
 }
 
 function refreshHeader() {
@@ -223,14 +205,12 @@ function updateAppVisibility() {
   const hasUnlocked = !!currentWalletId;
 
   if (hasUnlocked) {
-    // Show normal chrome
     if (walletTopbar) walletTopbar.hidden = false;
     if (walletHero) walletHero.hidden = false;
 
     hideWalletHub();
     if (walletsNavBtn) walletsNavBtn.classList.remove("nav-item-attention");
   } else {
-    // Hide main content, show Wallet Hub gate
     if (walletTopbar) walletTopbar.hidden = true;
     if (walletHero) walletHero.hidden = true;
     if (walletDashboard) walletDashboard.hidden = true;
@@ -240,6 +220,54 @@ function updateAppVisibility() {
     if (walletsNavBtn) walletsNavBtn.classList.add("nav-item-attention");
   }
 }
+
+function setView(view) {
+  // Wallets nav: open wallet hub popup
+  if (view === "wallets") {
+    showWalletHub();
+    return;
+  }
+
+  const hasUnlocked = !!currentWalletId;
+  currentView = view;
+
+  if (walletDashboard) {
+    walletDashboard.hidden = true;
+    walletDashboard.classList.remove("active-view");
+  }
+  if (safesendPage) {
+    safesendPage.hidden = true;
+    safesendPage.classList.remove("active-view");
+  }
+
+  if (!hasUnlocked) {
+    updateAppVisibility();
+    return;
+  }
+
+  if (view === "safesend" && safesendPage) {
+    safesendPage.hidden = false;
+    safesendPage.classList.add("active-view");
+  } else if (walletDashboard) {
+    walletDashboard.hidden = false;
+    walletDashboard.classList.add("active-view");
+  }
+
+  navButtons.forEach((btn) => {
+    const v = btn.dataset.view;
+    if (v === "wallets") return;
+    btn.classList.toggle("nav-item-active", v === view);
+  });
+
+  updateAppVisibility();
+}
+
+navButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const view = btn.dataset.view;
+    setView(view);
+  });
+});
 
 // ===== WALLET HUB POPUP =====
 function updateWalletHubList() {
@@ -312,13 +340,11 @@ function renderWallets() {
           <span class="wallet-toggle">+</span>
         </div>
       </button>
-      <div class="wallet-holdings" hidden>
-      </div>
+      <div class="wallet-holdings" hidden></div>
     `;
 
     const holdingsContainer = card.querySelector(".wallet-holdings");
 
-    // Header row: Asset | Amount | Value (USD) | 24h Change | Action
     holdingsContainer.innerHTML = `
       <div class="holding-row holding-row-header">
         <span class="header-asset">Asset</span>
@@ -396,7 +422,7 @@ walletsContainer.addEventListener("click", (e) => {
 
 // Action menu + SafeSend trigger
 document.addEventListener("click", (e) => {
-  // Close menus if clicked outside
+  // Close menus if clicked outside actions
   if (!e.target.closest(".holding-action")) {
     document
       .querySelectorAll(".action-menu:not([hidden])")
@@ -427,22 +453,20 @@ document.addEventListener("click", (e) => {
   const walletId = holdingRow.dataset.walletId;
   const index = Number(holdingRow.dataset.holdingIndex);
   const wallet = getWalletById(walletId);
-  const holding = wallet && wallet.holdings[index];
 
-  if (!wallet || !holding) return;
+  if (!wallet) return;
 
   if (action === "safesend") {
-    startSafeSendForHolding(wallet, holding);
+    goToSafeSend(wallet.id, index);
   } else {
-    console.log(`TODO: ${action} for`, wallet.label, holding.symbol);
+    console.log(`TODO: ${action} for`, wallet.label);
   }
 });
 
-// ===== SAFE SEND PAGE HELPERS =====
+// ===== SAFE SEND SELECTORS =====
 function populateSafesendSelectors() {
   if (!ssWalletSelect || !ssAssetSelect) return;
 
-  // Remember previous selections (if any)
   const prevWalletId = ssWalletSelect.value || currentWalletId;
   const prevAssetKey = ssAssetSelect.value;
 
@@ -466,8 +490,8 @@ function populateSafesendSelectors() {
     wallets.find((w) => w.id === prevWalletId) ||
     wallets.find((w) => w.id === currentWalletId) ||
     wallets[0];
-  ssWalletSelect.value = walletToUse.id;
 
+  ssWalletSelect.value = walletToUse.id;
   populateAssetsForWallet(walletToUse.id, prevAssetKey);
 }
 
@@ -489,7 +513,6 @@ function populateAssetsForWallet(walletId, prevAssetKey) {
     ssAssetSelect.appendChild(opt);
   });
 
-  // restore selection if possible
   if (prevAssetKey && [...ssAssetSelect.options].some((o) => o.value === prevAssetKey)) {
     ssAssetSelect.value = prevAssetKey;
   } else {
@@ -503,33 +526,26 @@ if (ssWalletSelect) {
   });
 }
 
-function startSafeSendForHolding(wallet, holding) {
-  // Switch view
+// Route into SafeSend for a given wallet/holding index
+function goToSafeSend(walletId, holdingIndex) {
   setView("safesend");
-
-  // Ensure dropdowns are populated
   populateSafesendSelectors();
 
-  // Select the wallet & asset in dropdowns
   if (ssWalletSelect) {
-    ssWalletSelect.value = wallet.id;
-    const holdingIndex = (wallet.holdings || []).findIndex(
-      (h) => h.symbol === holding.symbol && h.name === holding.name
-    );
-    const key =
-      holdingIndex >= 0 ? `${wallet.id}:${holdingIndex}` : `${wallet.id}:0`;
-    populateAssetsForWallet(wallet.id, key);
+    ssWalletSelect.value = walletId;
+    const key = `${walletId}:${holdingIndex}`;
+    populateAssetsForWallet(walletId, key);
   }
 
-  // Clear / focus recipient input
   if (recipientInput) {
     recipientInput.focus();
   }
 }
 
-// ===== SAFE SEND SCORE / HISTORY (stub) =====
+// ===== SAFE SEND SCORE / HISTORY =====
 function classifyScore(score) {
-  if (score === null || score === undefined) return "neutral";
+  if (score === null || score === undefined || Number.isNaN(score))
+    return "neutral";
   if (score >= 80) return "good";
   if (score >= 50) return "warn";
   return "bad";
@@ -538,7 +554,7 @@ function classifyScore(score) {
 function updateRiskGauge(score) {
   if (!riskGaugeLabel || !safesendScoreBadge) return;
 
-  if (score === null) {
+  if (score === null || score === undefined || Number.isNaN(score)) {
     riskGaugeLabel.textContent = "--";
     safesendScoreBadge.textContent = "Score: -- / 100";
     safesendScoreBadge.className = "risk-badge risk-badge-neutral";
@@ -551,24 +567,52 @@ function updateRiskGauge(score) {
   const level = classifyScore(score);
   safesendScoreBadge.className = "risk-badge";
   if (level === "good") safesendScoreBadge.classList.add("risk-badge-good");
-  else if (level === "warn") safesendScoreBadge.classList.add("risk-badge-warn");
-  else if (level === "bad") safesendScoreBadge.classList.add("risk-badge-bad");
+  else if (level === "warn")
+    safesendScoreBadge.classList.add("risk-badge-warn");
+  else if (level === "bad")
+    safesendScoreBadge.classList.add("risk-badge-bad");
   else safesendScoreBadge.classList.add("risk-badge-neutral");
+}
 
-  // simple highlight list (stub)
-  if (riskHighlightsList) {
-    riskHighlightsList.innerHTML = "";
+function updateRiskHighlightsFromEngine(engineResult) {
+  if (!riskHighlightsList) return;
+  riskHighlightsList.innerHTML = "";
+
+  if (!engineResult) {
+    const li = document.createElement("li");
+    li.textContent = "Awaiting SafeSend check.";
+    riskHighlightsList.appendChild(li);
+    return;
+  }
+
+  const reasons = Array.isArray(engineResult.reasons)
+    ? engineResult.reasons
+    : [];
+
+  const impacts = Array.isArray(engineResult.explain?.factorImpacts)
+    ? engineResult.explain.factorImpacts
+    : [];
+
+  let bullets = reasons.slice();
+  if (!bullets.length && impacts.length) {
+    bullets = impacts
+      .filter((f) => f.delta > 0)
+      .map((f) => f.label);
+  }
+
+  if (!bullets.length) {
     const li = document.createElement("li");
     li.textContent =
-      level === "good"
-        ? "No obvious red flags detected (stub scoring)."
-        : level === "warn"
-        ? "Some moderate risk indicators (stub scoring)."
-        : level === "bad"
-        ? "High-risk pattern detected (stub scoring)."
-        : "Awaiting SafeSend check.";
+      "No major risk factors flagged by the SafeSend engine.";
     riskHighlightsList.appendChild(li);
+    return;
   }
+
+  bullets.slice(0, 4).forEach((reason) => {
+    const li = document.createElement("li");
+    li.textContent = reason;
+    riskHighlightsList.appendChild(li);
+  });
 }
 
 function renderSafesendHistory() {
@@ -628,7 +672,7 @@ function renderSafesendHistory() {
 }
 
 if (runSafeSendBtn) {
-  runSafeSendBtn.addEventListener("click", () => {
+  runSafeSendBtn.addEventListener("click", async () => {
     const address = (recipientInput && recipientInput.value.trim()) || "";
     if (!address) {
       alert("Paste a recipient address or ENS first.");
@@ -640,38 +684,83 @@ if (runSafeSendBtn) {
     const wallet = walletId && getWalletById(walletId);
 
     let assetSymbol = "";
+    let amountUsd = null;
+
     if (wallet && assetKey && assetKey.includes(":")) {
       const idx = Number(assetKey.split(":")[1]);
       const holding = wallet.holdings[idx];
-      if (holding) assetSymbol = holding.symbol;
+      if (holding) {
+        assetSymbol = holding.symbol;
+        amountUsd = holding.usdValue ?? null;
+      }
     }
 
-    // Stub: random-ish score for now; engine will override later
-    const score = Math.floor(60 + Math.random() * 35); // 60–94
-    const scoreCategory = classifyScore(score);
+    runSafeSendBtn.disabled = true;
+    runSafeSendBtn.textContent = "Running...";
 
-    // Look for previous entry for this address
-    const previous = safesendHistory.find(
-      (e) => e.address.toLowerCase() === address.toLowerCase()
-    );
-    let alertText = "";
-    if (previous && previous.score !== score) {
-      alertText = `Score changed from ${previous.score} to ${score}.`;
+    try {
+      const networkValue = networkSelect
+        ? networkSelect.value
+        : "ethereum-mainnet";
+
+      const payload = {
+        network: mapNetworkForRiskEngine(networkValue),
+        toAddress: address,
+        fromAddress: wallet ? wallet.address : null,
+        amountUsd,
+        symbol: assetSymbol || null,
+      };
+
+      const res = await fetch(`${RISK_ENGINE_BASE_URL}/wallet-risk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Risk engine HTTP ${res.status}`);
+      }
+
+      const engineResult = await res.json();
+      const score =
+        engineResult.score ?? engineResult.risk_score ?? null;
+
+      updateRiskGauge(score);
+      updateRiskHighlightsFromEngine(engineResult);
+
+      const previous = safesendHistory.find(
+        (e) => e.address.toLowerCase() === address.toLowerCase()
+      );
+      let alertText = "";
+      if (previous && previous.score !== score) {
+        alertText = `Score changed from ${previous.score} to ${score}.`;
+      }
+
+      const scoreCategory = classifyScore(score);
+      const entry = {
+        address,
+        walletLabel: wallet ? wallet.label : "Unknown wallet",
+        assetSymbol: assetSymbol || "Unknown asset",
+        score,
+        scoreCategory,
+        alertText,
+        timestamp: Date.now(),
+      };
+
+      safesendHistory.push(entry);
+      saveSafesendHistory();
+      renderSafesendHistory();
+    } catch (err) {
+      console.error("SafeSend error:", err);
+      alert(
+        "SafeSend risk engine is temporarily unavailable. Showing no score."
+      );
+      updateRiskGauge(null);
+      updateRiskHighlightsFromEngine(null);
+    } finally {
+      runSafeSendBtn.disabled = false;
+      runSafeSendBtn.textContent = "Run SafeSend";
     }
-
-    const entry = {
-      address,
-      walletLabel: wallet ? wallet.label : "Unknown wallet",
-      assetSymbol: assetSymbol || "Unknown asset",
-      score,
-      scoreCategory,
-      alertText,
-      timestamp: Date.now()
-    };
-    safesendHistory.push(entry);
-    saveSafesendHistory();
-    renderSafesendHistory();
-    updateRiskGauge(score);
   });
 }
 
@@ -682,19 +771,21 @@ if (clearSafesendHistoryBtn) {
     saveSafesendHistory();
     renderSafesendHistory();
     updateRiskGauge(null);
+    updateRiskHighlightsFromEngine(null);
   });
 }
 
 // ===== MODAL HELPERS =====
 function openModal(el) {
+  if (!el) return;
   el.removeAttribute("hidden");
 }
 
 function closeModal(el) {
+  if (!el) return;
   el.setAttribute("hidden", "");
 }
 
-// Close modals on backdrop / close buttons
 document.addEventListener("click", (e) => {
   if (e.target.matches("[data-close-modal]")) {
     const modal = e.target.closest(".modal");
@@ -768,7 +859,7 @@ cwConfirmBtn.addEventListener("click", () => {
     password: password || null,
     totalUsd: 0,
     change24hPct: 0,
-    holdings: []
+    holdings: [],
   });
 
   saveWallets();
@@ -777,7 +868,7 @@ cwConfirmBtn.addEventListener("click", () => {
   setCurrentWallet(id);
 });
 
-// ===== IMPORT / UNLOCK BY SEED (with optional password) =====
+// ===== IMPORT / UNLOCK BY SEED =====
 function openImportModal() {
   iwLabelEl.value = "";
   iwMnemonicEl.value = "";
@@ -856,12 +947,11 @@ iwImportBtn.addEventListener("click", () => {
         password: password || null,
         totalUsd: 0,
         change24hPct: 0,
-        holdings: []
+        holdings: [],
       };
       wallets.push(existing);
       saveWallets();
     } else if (password) {
-      // Optionally update password if provided
       existing.password = password;
       saveWallets();
     }
@@ -877,7 +967,7 @@ iwImportBtn.addEventListener("click", () => {
   }
 });
 
-// ===== UNLOCK BY PASSWORD (Wallet Hub -> Unlock modal) =====
+// ===== UNLOCK BY PASSWORD =====
 function openUnlockModalForWallet(wallet) {
   pendingUnlockWalletId = wallet.id;
   uwLabelEl.textContent = wallet.label;
@@ -931,17 +1021,61 @@ uwConfirmBtn.addEventListener("click", () => {
     return;
   }
 
-  // Success
   pendingUnlockWalletId = null;
   closeModal(unlockWalletModal);
   setCurrentWallet(wallet.id);
   renderWallets();
 });
 
-// ===== NETWORK SELECT (STUB) =====
+// ===== NETWORK SELECT (stub) =====
 if (networkSelect) {
   networkSelect.addEventListener("change", (e) => {
     console.log("Change network (UI only):", e.target.value);
+  });
+}
+
+// Copy address
+if (copyAddressBtn) {
+  copyAddressBtn.addEventListener("click", async () => {
+    const text = walletAddressEl.textContent || "";
+    if (!text || text === "No wallet selected") return;
+    try {
+      await navigator.clipboard.writeText(text);
+      copyAddressBtn.textContent = "✓";
+      setTimeout(() => {
+        copyAddressBtn.textContent = "⧉";
+      }, 800);
+    } catch (err) {
+      console.error("Clipboard error", err);
+    }
+  });
+}
+
+// Switch account (simple: open Wallet Hub)
+if (switchAccountBtn) {
+  switchAccountBtn.addEventListener("click", () => {
+    showWalletHub();
+  });
+}
+
+// Send button → SafeSend for current wallet
+if (sendBtn) {
+  sendBtn.addEventListener("click", () => {
+    if (!currentWalletId) {
+      showWalletHub();
+      return;
+    }
+    const wallet = getWalletById(currentWalletId);
+    if (!wallet) {
+      showWalletHub();
+      return;
+    }
+    const hasHoldings = wallet.holdings && wallet.holdings.length > 0;
+    if (hasHoldings) {
+      goToSafeSend(wallet.id, 0);
+    } else {
+      setView("safesend");
+    }
   });
 }
 
@@ -949,7 +1083,7 @@ if (networkSelect) {
 loadWallets();
 loadSafesendHistory();
 
-// Seed demo wallet if none exist (for visual testing)
+// Seed a demo wallet if there are none (for visual testing)
 if (!wallets.length) {
   wallets = [
     {
@@ -967,24 +1101,27 @@ if (!wallets.length) {
           amount: 0.5,
           usdValue: 950,
           change24hPct: 2.5,
-          tokenAddress: null
+          tokenAddress: null,
         },
         {
           symbol: "USDC",
           name: "USD Coin",
-          logoUrl: "https://cryptologos.cc/logos/usd-coin-usdc-logo.png?v=032",
+          logoUrl:
+            "https://cryptologos.cc/logos/usd-coin-usdc-logo.png?v=032",
           amount: 100,
           usdValue: 100,
           change24hPct: 0.0,
-          tokenAddress: "0x..."
-        }
-      ]
-    }
+          tokenAddress: "0x...",
+        },
+      ],
+    },
   ];
   saveWallets();
+  setCurrentWallet("demo");
 }
 
 renderWallets();
 renderSafesendHistory();
 updateRiskGauge(null);
+updateRiskHighlightsFromEngine(null);
 setView("dashboard");
