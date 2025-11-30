@@ -1,4 +1,4 @@
-// app.js — X-Wallet UI + SafeSend wired to Risk Engine
+// app.js — X-Wallet UI + SafeSend + live Sepolia via Alchemy
 
 // ===== SAFETY: ethers presence =====
 if (typeof ethers === "undefined") {
@@ -11,8 +11,9 @@ const LS_WALLETS_KEY = "xwallet_wallets_v1";
 const SS_CURRENT_ID_KEY = "xwallet_current_wallet_id_v1";
 const LS_SAFESEND_HISTORY_KEY = "xwallet_safesend_history_v1";
 
-// ===== RISK ENGINE CONFIG =====
-const RISK_ENGINE_BASE_URL = "https://riskxlabs-vision-api.agedotcom.workers.dev"; // <-- CHANGE THIS
+// ===== RISK ENGINE CONFIG (shared brain with Vision) =====
+const RISK_ENGINE_BASE_URL =
+  "https://riskxlabs-vision-api.agedotcom.workers.dev"; // <-- CHANGE to your Worker URL
 
 function mapNetworkForRiskEngine(uiValue) {
   switch (uiValue) {
@@ -36,6 +37,32 @@ function mapNetworkForRiskEngine(uiValue) {
     default:
       return "eth";
   }
+}
+
+// ===== ALCHEMY CONFIG (live Sepolia + ETH) =====
+const ALCHEMY_API_KEY = "kxHg5y9yBXWAb9cOcJsf0"; // <-- PUT YOUR REAL ALCHEMY KEY HERE
+
+function getRpcUrlForNetwork(uiValue) {
+  if (!ALCHEMY_API_KEY || ALCHEMY_API_KEY === "kxHg5y9yBXWAb9cOcJsf0") {
+    return null;
+  }
+
+  if (uiValue === "ethereum-mainnet") {
+    return `https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
+  }
+
+  if (uiValue === "sepolia") {
+    return `https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
+  }
+
+  // other networks (polygon, arbitrum, etc.) can be added later
+  return null;
+}
+
+function getProviderForNetwork(uiValue) {
+  const url = getRpcUrlForNetwork(uiValue);
+  if (!url) return null;
+  return new ethers.providers.JsonRpcProvider(url);
 }
 
 // ===== STATE =====
@@ -175,6 +202,74 @@ function getWalletById(id) {
   return wallets.find((w) => w.id === id);
 }
 
+// ===== LIVE BALANCE REFRESH (Alchemy / Sepolia) =====
+async function refreshWalletOnChainData() {
+  const wallet = getWalletById(currentWalletId);
+  if (!wallet || !networkSelect) return;
+
+  const uiNet = networkSelect.value || "sepolia";
+  const provider = getProviderForNetwork(uiNet);
+
+  if (!networkStatusPill) {
+    // no pill to update, just skip UI part
+  } else {
+    networkStatusPill.className = "status-pill";
+  }
+
+  if (!provider) {
+    if (networkStatusPill) {
+      networkStatusPill.textContent = "RPC: DISCONNECTED";
+      networkStatusPill.classList.add("status-pill-bad");
+    }
+    console.warn(
+      "No provider for network",
+      uiNet,
+      "- did you set ALCHEMY_API_KEY?"
+    );
+    return;
+  }
+
+  if (networkStatusPill) {
+    networkStatusPill.textContent = "RPC: CONNECTING…";
+  }
+
+  try {
+    const raw = await provider.getBalance(wallet.address);
+    const eth = Number(ethers.utils.formatEther(raw));
+
+    // For now, treat ETH amount as the "value" (prototype)
+    const isSepolia = uiNet === "sepolia";
+    wallet.totalUsd = eth;
+    wallet.change24hPct = 0;
+    wallet.holdings = [
+      {
+        symbol: isSepolia ? "ETH-sep" : "ETH",
+        name: isSepolia ? "Ethereum (Sepolia)" : "Ethereum",
+        logoUrl:
+          "https://cryptologos.cc/logos/ethereum-eth-logo.png?v=032",
+        amount: eth,
+        usdValue: eth,
+        change24hPct: 0,
+        tokenAddress: null,
+      },
+    ];
+
+    saveWallets();
+    renderWallets();
+
+    if (networkStatusPill) {
+      networkStatusPill.textContent = "RPC: CONNECTED";
+      networkStatusPill.className = "status-pill status-pill-good";
+    }
+  } catch (err) {
+    console.error("Error refreshing on-chain balance", err);
+    if (networkStatusPill) {
+      networkStatusPill.textContent = "RPC: ERROR";
+      networkStatusPill.className = "status-pill status-pill-bad";
+    }
+  }
+}
+
 // ===== VIEW MANAGEMENT =====
 let currentView = "dashboard";
 
@@ -188,6 +283,8 @@ function setCurrentWallet(id) {
   refreshHeader();
   updateAppVisibility();
   populateSafesendSelectors();
+  // Trigger live balance refresh when we have a wallet + network
+  refreshWalletOnChainData();
 }
 
 function refreshHeader() {
@@ -675,7 +772,15 @@ if (runSafeSendBtn) {
   runSafeSendBtn.addEventListener("click", async () => {
     const address = (recipientInput && recipientInput.value.trim()) || "";
     if (!address) {
-      alert("Paste a recipient address or ENS first.");
+      alert("Paste a recipient address first.");
+      return;
+    }
+
+    // TEMP: risk engine only supports 0x EVM addresses
+    if (!address.toLowerCase().startsWith("0x")) {
+      alert(
+        "The current SafeSend engine works with 0x EVM addresses only. ENS / Tron support will come later."
+      );
       return;
     }
 
@@ -717,11 +822,26 @@ if (runSafeSendBtn) {
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        throw new Error(`Risk engine HTTP ${res.status}`);
+      const bodyText = await res.text();
+      let engineResult;
+      try {
+        engineResult = JSON.parse(bodyText);
+      } catch {
+        engineResult = null;
       }
 
-      const engineResult = await res.json();
+      if (!res.ok) {
+        console.error("Risk engine 4xx/5xx:", res.status, bodyText);
+        const msg =
+          engineResult && engineResult.error
+            ? engineResult.error
+            : `Risk engine error ${res.status}`;
+        alert(`SafeSend risk engine rejected the request: ${msg}`);
+        updateRiskGauge(null);
+        updateRiskHighlightsFromEngine(null);
+        return;
+      }
+
       const score =
         engineResult.score ?? engineResult.risk_score ?? null;
 
@@ -1027,10 +1147,11 @@ uwConfirmBtn.addEventListener("click", () => {
   renderWallets();
 });
 
-// ===== NETWORK SELECT (stub) =====
+// ===== NETWORK SELECT =====
 if (networkSelect) {
   networkSelect.addEventListener("change", (e) => {
-    console.log("Change network (UI only):", e.target.value);
+    console.log("Network changed to:", e.target.value);
+    refreshWalletOnChainData();
   });
 }
 
@@ -1083,7 +1204,7 @@ if (sendBtn) {
 loadWallets();
 loadSafesendHistory();
 
-// Seed a demo wallet if there are none (for visual testing)
+// Seed a demo wallet ONLY if there are none (for visual testing)
 if (!wallets.length) {
   wallets = [
     {
