@@ -1409,3 +1409,123 @@ body {
   width: 28px;
   height: 28px;
 }
+/* ----- SendSafe button CRT text ----- */
+.sendsafe-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.sendsafe-btn .safesend-tv {
+  display: inline-block;
+  /* inherits the animated CRT styling already defined for .safesend-tv */
+}
+
+/* ----- Recent transactions list ----- */
+.safesend-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.safesend-recent-tx,
+.safesend-history-footer {
+  background: radial-gradient(circle at top left, #151d29, #050910);
+  border-radius: 1rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid rgba(160, 204, 255, 0.08);
+}
+
+.safesend-tx-list {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.safesend-tx-section-label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(198, 214, 245, 0.8);
+  margin-top: 0.5rem;
+}
+
+.safesend-tx-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr) minmax(0, 0.7fr);
+  column-gap: 0.75rem;
+  align-items: center;
+  font-size: 0.78rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.55rem;
+  background: linear-gradient(
+    90deg,
+    rgba(9, 20, 38, 0.9),
+    rgba(9, 20, 38, 0.4)
+  );
+}
+
+.safesend-tx-row span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.safesend-tx-direction {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(198, 214, 245, 0.75);
+}
+
+.safesend-tx-hash {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  opacity: 0.9;
+}
+
+.safesend-tx-amount {
+  text-align: right;
+  font-weight: 500;
+}
+
+/* ----- SendSafe result modal ----- */
+.safesend-result-dialog {
+  max-width: 540px;
+}
+
+.modal-risk-gauge-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.modal-risk-gauge-wrap .risk-gauge {
+  width: 120px;
+  height: 120px;
+}
+
+.modal-checkbox-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  margin-top: 0.75rem;
+  font-size: 0.82rem;
+  line-height: 1.3;
+}
+
+.modal-checkbox-row input[type="checkbox"] {
+  margin-top: 0.18rem;
+}
+
+/* risk colors reused for modal gauge text */
+.modal-risk-gauge-wrap .risk-gauge.good span {
+  color: #52ffb8;
+}
+
+.modal-risk-gauge-wrap .risk-gauge.warn span {
+  color: #ffd35a;
+}
+
+.modal-risk-gauge-wrap .risk-gauge.bad span {
+  color: #ff5c7a;
+}
