@@ -813,6 +813,7 @@ async function fetchRecentTxForAddress(address, uiNetwork) {
   }
 }
 
+// Side-by-side recent transactions: recipient vs sender
 async function loadRecentTransactions(fromAddress, toAddress, uiNetwork) {
   if (!safesendTxList) return;
 
@@ -825,36 +826,48 @@ async function loadRecentTransactions(fromAddress, toAddress, uiNetwork) {
       fetchRecentTxForAddress(fromAddress, uiNetwork),
     ]);
 
-    const frag = document.createDocumentFragment();
+    const wrapper = document.createElement("div");
+    wrapper.className = "safesend-tx-columns";
+
+    // ── Recipient column ─────────────────────────────
+    const recipCol = document.createElement("div");
+    recipCol.className = "safesend-tx-column";
+
+    const recipHeader = document.createElement("div");
+    recipHeader.className = "safesend-tx-section-label";
+    recipHeader.textContent = "Recipient address";
+    recipCol.appendChild(recipHeader);
 
     if (toTxs.length) {
-      const label = document.createElement("div");
-      label.className = "safesend-tx-section-label";
-      label.textContent = "Recipient address";
-      frag.appendChild(label);
-
       toTxs.forEach((tx) => {
         const row = document.createElement("div");
         row.className = "safesend-tx-row";
         row.innerHTML = `
-          <span class="safesend-tx-time">${formatTxTime(
-            tx.timeStamp
-          )}</span>
+          <span class="safesend-tx-time">${formatTxTime(tx.timeStamp)}</span>
           <span class="safesend-tx-hash">${shorten(tx.hash || "")}</span>
           <span class="safesend-tx-amount">${
             tx.value && tx.value !== "0" ? tx.value : ""
           }</span>
         `;
-        frag.appendChild(row);
+        recipCol.appendChild(row);
       });
+    } else {
+      const empty = document.createElement("div");
+      empty.className = "hint-text";
+      empty.textContent = "No recent tx for recipient.";
+      recipCol.appendChild(empty);
     }
 
-    if (fromTxs.length) {
-      const label = document.createElement("div");
-      label.className = "safesend-tx-section-label";
-      label.textContent = "Sender address";
-      frag.appendChild(label);
+    // ── Sender column (with direction) ───────────────
+    const senderCol = document.createElement("div");
+    senderCol.className = "safesend-tx-column";
 
+    const senderHeader = document.createElement("div");
+    senderHeader.className = "safesend-tx-section-label";
+    senderHeader.textContent = "Sender address";
+    senderCol.appendChild(senderHeader);
+
+    if (fromTxs.length) {
       fromTxs.forEach((tx) => {
         const direction =
           tx.from &&
@@ -862,6 +875,7 @@ async function loadRecentTransactions(fromAddress, toAddress, uiNetwork) {
           tx.from.toLowerCase() === fromAddress.toLowerCase()
             ? "Sent"
             : "Received";
+
         const row = document.createElement("div");
         row.className = "safesend-tx-row";
         row.innerHTML = `
@@ -874,19 +888,20 @@ async function loadRecentTransactions(fromAddress, toAddress, uiNetwork) {
             tx.value && tx.value !== "0" ? tx.value : ""
           }</span>
         `;
-        frag.appendChild(row);
+        senderCol.appendChild(row);
       });
-    }
-
-    safesendTxList.innerHTML = "";
-    if (!toTxs.length && !fromTxs.length) {
+    } else {
       const empty = document.createElement("div");
       empty.className = "hint-text";
-      empty.textContent = "No recent transactions found for these addresses.";
-      safesendTxList.appendChild(empty);
-    } else {
-      safesendTxList.appendChild(frag);
+      empty.textContent = "No recent tx for sender.";
+      senderCol.appendChild(empty);
     }
+
+    wrapper.appendChild(recipCol);
+    wrapper.appendChild(senderCol);
+
+    safesendTxList.innerHTML = "";
+    safesendTxList.appendChild(wrapper);
   } catch (err) {
     console.warn("loadRecentTransactions error", err);
     safesendTxList.innerHTML =
