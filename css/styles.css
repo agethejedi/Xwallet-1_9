@@ -1883,3 +1883,10 @@ body {
 .ticker-asset-option input[type="checkbox"] {
   accent-color: #00e6ff;
 }
+
+/* Dashboard layout: stack panels vertically (holdings, then ticker) */
+#walletDashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
