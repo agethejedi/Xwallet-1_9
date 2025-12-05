@@ -1,4 +1,4 @@
-// app.js — X-Wallet + SendSafe + Alchemy Sepolia + Risk Engine + Ticker + Wallet Settings
+// app.js — X-Wallet + SendSafe + Alchemy (ETH + all ERC-20s) + Risk Engine + Ticker + Wallet Settings
 
 if (typeof ethers === "undefined") {
   alert("Crypto library failed to load. Check the ethers.js <script> tag URL.");
@@ -56,6 +56,30 @@ const DEFAULT_TICKER_SYMBOLS = ["BTC", "ETH", "USDT", "SOL"];
 // Alchemy
 const ALCHEMY_API_KEY = "kxHg5y9yBXWAb9cOcJsf0";
 
+// Known tokens (for nicer names/logos on top of generic ERC-20 metadata)
+const KNOWN_TOKENS_BY_ADDRESS = {
+  // PYUSD mainnet
+  "0x6c3ea9036406852006290770bedfcaba0e23a0e8": {
+    symbol: "PYUSD",
+    name: "PayPal USD",
+    logoUrl: "https://cryptologos.cc/logos/paypal-usd-pyusd-logo.png?v=032",
+  },
+  // PYUSD Sepolia
+  "0xcac5ca27d96c219bdcdc823940b66ebd4ff4c7f1": {
+    symbol: "PYUSD-sep",
+    name: "PYUSD (Sepolia)",
+    logoUrl: "https://cryptologos.cc/logos/paypal-usd-pyusd-logo.png?v=032",
+  },
+};
+
+// Minimal ERC-20 ABI for metadata & balances
+const ERC20_ABI = [
+  "function balanceOf(address owner) view returns (uint256)",
+  "function decimals() view returns (uint8)",
+  "function symbol() view returns (string)",
+  "function name() view returns (string)",
+];
+
 function getRpcUrlForNetwork(uiValue) {
   if (!ALCHEMY_API_KEY) return null;
   if (uiValue === "ethereum-mainnet") {
@@ -71,6 +95,71 @@ function getProviderForNetwork(uiValue) {
   const url = getRpcUrlForNetwork(uiValue);
   if (!url) return null;
   return new ethers.providers.JsonRpcProvider(url);
+}
+
+// Autoload all ERC-20 token balances for a wallet using Alchemy's extended API
+async function fetchAllErc20Holdings(provider, walletAddress, { maxTokens = 20 } = {}) {
+  try {
+    const resp = await provider.send("alchemy_getTokenBalances", [
+      walletAddress,
+      "erc20",
+    ]);
+
+    if (!resp || !Array.isArray(resp.tokenBalances)) return [];
+
+    const nonZero = resp.tokenBalances
+      .filter((tb) => tb.tokenBalance && tb.tokenBalance !== "0")
+      .slice(0, maxTokens);
+
+    const holdings = await Promise.all(
+      nonZero.map(async (tb) => {
+        const tokenAddr = tb.contractAddress;
+        try {
+          const contract = new ethers.Contract(tokenAddr, ERC20_ABI, provider);
+
+          const [decimalsRaw, symbolRaw, nameRaw] = await Promise.all([
+            contract.decimals().catch(() => 18),
+            contract.symbol().catch(() => "TOKEN"),
+            contract.name().catch(() => "Unknown Token"),
+          ]);
+
+          const decimals = Number(decimalsRaw) || 18;
+          const override =
+            KNOWN_TOKENS_BY_ADDRESS[tokenAddr.toLowerCase()] || {};
+
+          const finalSymbol = override.symbol || symbolRaw || "TOKEN";
+          const finalName = override.name || nameRaw || "Unknown Token";
+          const logoUrl =
+            override.logoUrl ||
+            "https://via.placeholder.com/32?text=" +
+              encodeURIComponent(finalSymbol[0] || "T");
+
+          const rawBal = tb.tokenBalance;
+          const amount = Number(ethers.utils.formatUnits(rawBal, decimals));
+
+          return {
+            symbol: finalSymbol,
+            name: finalName,
+            logoUrl,
+            amount,
+            // For now, treat 1 token unit as 1 "USD-ish" value in this prototype.
+            // Stablecoins (USDC, PYUSD, etc.) will be roughly correct; others are placeholders.
+            usdValue: amount,
+            change24hPct: 0,
+            tokenAddress: tokenAddr,
+          };
+        } catch (inner) {
+          console.warn("Failed to hydrate token", tokenAddr, inner);
+          return null;
+        }
+      })
+    );
+
+    return holdings.filter(Boolean);
+  } catch (err) {
+    console.warn("fetchAllErc20Holdings error", err);
+    return [];
+  }
 }
 
 // ===== STATE =====
@@ -282,7 +371,11 @@ async function refreshWalletOnChainData() {
       networkStatusPill.textContent = "RPC: DISCONNECTED";
       networkStatusPill.classList.add("status-pill-bad");
     }
-    console.warn("No provider for network", uiNet, "- did you set ALCHEMY_API_KEY?");
+    console.warn(
+      "No provider for network",
+      uiNet,
+      "- did you set ALCHEMY_API_KEY?"
+    );
     return;
   }
 
@@ -291,23 +384,37 @@ async function refreshWalletOnChainData() {
   }
 
   try {
-    const raw = await provider.getBalance(wallet.address);
-    const eth = Number(ethers.utils.formatEther(raw));
+    const holdings = [];
 
+    // 1) Native ETH balance
+    const rawEth = await provider.getBalance(wallet.address);
+    const eth = Number(ethers.utils.formatEther(rawEth));
     const isSepolia = uiNet === "sepolia";
-    wallet.totalUsd = eth;
+
+    holdings.push({
+      symbol: isSepolia ? "ETH-sep" : "ETH",
+      name: isSepolia ? "Ethereum (Sepolia)" : "Ethereum",
+      logoUrl: "https://cryptologos.cc/logos/ethereum-eth-logo.png?v=032",
+      amount: eth,
+      // For now we treat 1 ETH = 1 "USD unit" in this prototype. Later this can hook into live prices.
+      usdValue: eth,
+      change24hPct: 0,
+      tokenAddress: null,
+    });
+
+    // 2) All ERC-20s (including PYUSD) via Alchemy
+    const erc20Holdings = await fetchAllErc20Holdings(provider, wallet.address);
+    erc20Holdings.forEach((h) => holdings.push(h));
+
+    // Aggregate total "USD" value
+    let totalUsd = 0;
+    for (const h of holdings) {
+      totalUsd += h.usdValue || 0;
+    }
+
+    wallet.totalUsd = totalUsd;
     wallet.change24hPct = 0;
-    wallet.holdings = [
-      {
-        symbol: isSepolia ? "ETH-sep" : "ETH",
-        name: isSepolia ? "Ethereum (Sepolia)" : "Ethereum",
-        logoUrl: "https://cryptologos.cc/logos/ethereum-eth-logo.png?v=032",
-        amount: eth,
-        usdValue: eth,
-        change24hPct: 0,
-        tokenAddress: null,
-      },
-    ];
+    wallet.holdings = holdings;
 
     saveWallets();
     renderWallets();
@@ -1625,9 +1732,7 @@ function renderTickerSettingsUI() {
 
 // ===== TICKER: DATA =====
 function getTickerAssetConfigForSymbols(symbols) {
-  const bySymbol = new Map(
-    AVAILABLE_TICKER_ASSETS.map((a) => [a.symbol, a])
-  );
+  const bySymbol = new Map(AVAILABLE_TICKER_ASSETS.map((a) => [a.symbol, a]));
   return symbols
     .map((sym) => bySymbol.get(sym))
     .filter((a) => !!a);
