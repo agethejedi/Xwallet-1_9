@@ -419,16 +419,20 @@ async function refreshWalletOnChainData() {
     const eth = Number(ethers.utils.formatEther(rawEth));
     const isSepolia = uiNet === "sepolia";
 
-    holdings.push({
-      symbol: isSepolia ? "ETH-sep" : "ETH",
-      name: isSepolia ? "Ethereum (Sepolia)" : "Ethereum",
-      logoUrl: "https://cryptologos.cc/logos/ethereum-eth-logo.png?v=032",
-      amount: eth,
-      // For now we treat 1 ETH = 1 "USD unit" in this prototype. Later this can hook into live prices.
-      usdValue: eth,
-      change24hPct: 0,
-      tokenAddress: null,
-    });
+   const isSepolia = uiNet === "sepolia";
+wallet.totalUsd = eth;
+wallet.change24hPct = 0;
+wallet.holdings = [
+  {
+    symbol: isSepolia ? "ETH-sep" : "ETH",
+    name: isSepolia ? "Ethereum (Sepolia)" : "Ethereum",
+    logoUrl: getTokenLogoUrl(isSepolia ? "ETH-sep" : "ETH"),
+    amount: eth,
+    usdValue: eth,
+    change24hPct: 0,
+    tokenAddress: null,
+  },
+];
 
     // 2) All ERC-20s (including PYUSD) via Alchemy
     const erc20Holdings = await fetchAllErc20Holdings(provider, wallet.address);
