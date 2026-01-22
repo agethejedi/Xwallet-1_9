@@ -3,7 +3,10 @@
    - Consolidated duplicates from your current file
    - Keeps RiskXLabs aesthetic + all your newer SendSafe/ticker/grid improvements
    - Fixes minor class mismatch: supports BOTH .amount-row and .safesend-amount-row
-   - Keeps #walletDashboard stacked vertically like your last section requested
+   - Adds Xwallet 1.8 UI support:
+     - ENS reverse display pill (#walletEnsName)
+     - ENS resolution preview row (#recipientResolveRow / #recipientResolvedAddress)
+     - Settings vault actions row (.settings-actions-row)
 */
 
 :root {
@@ -1615,6 +1618,68 @@ body {
   gap: 16px;
 }
 
+/* =========================
+   XWALLET 1.8 ADDITIONS
+   ENS + Portable Vault UI
+   ========================= */
+
+/* Reverse ENS name under the current wallet address (topbar) */
+#walletEnsName {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-end;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  background: radial-gradient(
+    circle at top left,
+    rgba(34, 211, 238, 0.16),
+    rgba(2, 6, 23, 0.92)
+  );
+  color: rgba(165, 243, 252, 0.95);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ENS resolution preview under recipient input */
+#recipientResolveRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(8, 18, 40, 0.55);
+}
+
+/* Make resolved address read like a “mono pill” */
+#recipientResolvedAddress {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.9);
+  color: #e5e7eb;
+  font-size: 11px;
+}
+
+/* Settings row for Export/Import vault buttons */
+.settings-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+  align-items: center;
+}
+
+/* Slightly more padding for vault buttons (matches settings rhythm) */
+.settings-actions-row .pill-btn-outline {
+  padding: 7px 14px;
+}
+
 /* Responsive */
 
 @media (max-width: 900px) {
@@ -1693,5 +1758,22 @@ body {
 
   .safesend-select {
     min-width: 0;
+  }
+
+  /* 1.8: topbar ENS pill wraps safely */
+  .address-wrap {
+    align-items: flex-start;
+  }
+
+  #walletEnsName {
+    align-self: flex-start;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  #recipientResolveRow {
+    flex-wrap: wrap;
   }
 }
