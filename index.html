@@ -39,9 +39,12 @@
         <button class="nav-item" data-view="safesend">
           <span>SendSafe</span>
         </button>
+
+        <!-- UI-only placeholder; app.js doesn't currently render Activity page -->
         <button class="nav-item" data-view="activity">
           <span>Activity</span>
         </button>
+
         <button class="nav-item" data-view="settings">
           <span>Settings</span>
         </button>
@@ -52,12 +55,12 @@
           Create wallet
         </button>
         <button id="importWalletBtn" class="pill-btn-outline sidebar-cta">
-          Import with 12-word seed
+          Import with seed phrase
         </button>
       </div>
 
       <div class="sidebar-footer">
-        <span class="version-pill" id="xwalletVersion">v1.5.9</span>
+        <span class="version-pill" id="xwalletVersion">v1.8.0</span>
         <span class="status-pill" id="networkStatusPill">RPC: DISCONNECTED</span>
       </div>
     </aside>
@@ -69,41 +72,41 @@
         <div class="network-select-wrap">
           <label for="networkSelect">Network</label>
 
-          <!-- ✅ UPDATED: network values match the new app.js NETWORKS keys -->
+          <!-- ✅ IMPORTANT: these values must match app.js getRpcUrlForNetwork() keys -->
           <select id="networkSelect">
             <!-- Ethereum -->
             <option value="ethereum-mainnet">Ethereum Mainnet</option>
             <option value="sepolia">Sepolia Testnet</option>
 
             <!-- Arbitrum -->
-            <option value="arbitrum-mainnet">Arbitrum One (Mainnet)</option>
+            <option value="arbitrum">Arbitrum One (Mainnet)</option>
             <option value="arbitrum-sepolia">Arbitrum Sepolia (Testnet)</option>
 
             <!-- Base -->
-            <option value="base-mainnet">Base (Mainnet)</option>
+            <option value="base">Base (Mainnet)</option>
             <option value="base-sepolia">Base Sepolia (Testnet)</option>
 
             <!-- Celo -->
-            <option value="celo-mainnet">Celo (Mainnet)</option>
-            <option value="celo-sepolia">Celo Sepolia (Testnet)</option>
+            <option value="celo">Celo (Mainnet)</option>
+            <option value="celo-alfajores">Celo Alfajores (Testnet)</option>
 
             <!-- Moonbeam -->
-            <option value="moonbeam-mainnet">Moonbeam (Mainnet)</option>
-            <option value="moonbase-alpha">Moonbase Alpha (Testnet)</option>
+            <option value="moonbeam">Moonbeam (Mainnet)</option>
+            <option value="moonbeam-alpha">Moonbase Alpha (Testnet)</option>
 
             <!-- World Chain -->
-            <option value="worldchain-mainnet">World Chain (Mainnet)</option>
+            <option value="worldchain">World Chain (Mainnet)</option>
             <option value="worldchain-sepolia">World Chain Sepolia (Testnet)</option>
 
-            <!-- IoTeX (direct RPCs you provided) -->
+            <!-- IoTeX (direct RPCs) -->
             <option value="iotex-mainnet">IoTeX (Mainnet)</option>
             <option value="iotex-testnet">IoTeX (Testnet)</option>
 
-            <!-- Non-EVM placeholders (kept for UI; not EVM balance-enabled in this build) -->
+            <!-- Non-EVM placeholders (UI only in this build) -->
             <option value="solana">Solana</option>
             <option value="tron">Tron</option>
 
-            <!-- Optional placeholders (only keep if your app.js includes RPC config for them) -->
+            <!-- Optional placeholders (only meaningful if your app.js supports them) -->
             <option value="polygon-pos">Polygon PoS</option>
             <option value="polygon-zkevm">Polygon zkEVM</option>
             <option value="linea">Linea</option>
@@ -112,11 +115,15 @@
 
         <div class="address-wrap">
           <div class="address-label">Current wallet</div>
+
           <div class="address-row">
             <span id="walletAddress" class="address-value">No wallet selected</span>
             <button id="copyAddressBtn" class="icon-btn" title="Copy address">⧉</button>
             <button id="switchAccountBtn" class="pill-btn pill-btn-outline">Switch</button>
           </div>
+
+          <!-- ✅ NEW: shows reverse ENS name if set (e.g., riskxlabs.eth) -->
+          <div id="walletEnsName" class="hint-text" hidden></div>
         </div>
       </header>
 
@@ -263,17 +270,22 @@
               </div>
 
               <div class="risk-actions">
-                <label for="recipientInput">Recipient address</label>
+                <label for="recipientInput">Recipient address or ENS</label>
                 <div class="recipient-row">
                   <input
                     id="recipientInput"
                     type="text"
                     class="input"
-                    placeholder="Paste address (0x...)"
+                    placeholder="Paste address (0x...) or ENS (name.eth)"
                   />
                   <button id="runSafeSendBtn" class="primary-btn sendsafe-btn">
                     <span class="safesend-tv">Sendsafe</span>
                   </button>
+                </div>
+
+                <!-- ✅ NEW: shows ENS → address resolution -->
+                <div id="recipientResolveRow" class="hint-text" hidden>
+                  Resolves to: <span id="recipientResolvedAddress"></span>
                 </div>
 
                 <button id="viewFullReportBtn" class="pill-btn pill-btn-outline">
@@ -330,6 +342,30 @@
               <div id="walletSettingsList" class="wallet-settings-list"></div>
             </section>
 
+            <!-- ✅ NEW: Vault export/import controls -->
+            <section class="settings-section">
+              <h4>Portable Wallet Vault (1.8)</h4>
+              <p class="settings-text">
+                Export/import encrypted seed vaults so the same wallet can be unlocked on another device.
+                This export does not include the plaintext seed phrase.
+              </p>
+
+              <div class="settings-actions-row">
+                <button id="exportVaultBtn" class="pill-btn-outline" type="button">
+                  Export Encrypted Vault
+                </button>
+
+                <input id="importVaultFile" type="file" accept="application/json" hidden />
+                <button id="importVaultBtn" class="pill-btn-outline" type="button">
+                  Import Encrypted Vault
+                </button>
+              </div>
+
+              <p class="settings-text small">
+                After importing, unlock wallets with their password to use them on this device.
+              </p>
+            </section>
+
             <!-- Ticker / Watchlist settings -->
             <section class="settings-section">
               <h4>Ticker &amp; Watchlist</h4>
@@ -367,7 +403,7 @@
         </div>
 
         <p class="modal-text">
-          Create a new wallet, import one with your 12-word seed phrase, or unlock
+          Create a new wallet, import one with your seed phrase, or unlock
           a wallet you’ve previously accessed using your password.
         </p>
 
@@ -375,7 +411,7 @@
 
         <div class="wallet-gate-actions">
           <button id="hubCreateBtn" class="primary-btn">Create wallet</button>
-          <button id="hubImportBtn" class="pill-btn-outline">Import with 12-word seed</button>
+          <button id="hubImportBtn" class="pill-btn-outline">Import with seed</button>
         </div>
       </div>
     </div>
@@ -391,8 +427,8 @@
       </header>
       <div class="modal-body">
         <p class="modal-text">
-          This 12-word phrase is the only way to recover this wallet.
-          Store it somewhere safe. We never store it for you.
+          This seed phrase is the only way to recover this wallet.
+          Store it somewhere safe.
         </p>
 
         <div class="modal-field">
@@ -407,7 +443,7 @@
         </div>
 
         <div class="modal-field">
-          <label>12-word seed phrase</label>
+          <label>Seed phrase</label>
           <textarea id="cwMnemonic" class="input input-multiline" readonly></textarea>
         </div>
 
@@ -433,9 +469,9 @@
       </header>
       <div class="modal-body">
         <p class="modal-text">
-          Paste your 12-word seed phrase below. If it matches a wallet already
-          stored on this device, we’ll unlock it. Otherwise we’ll import it as a
-          new wallet. You can also set a password for future unlocks.
+          Paste your seed phrase below (12 or 24 words). If it matches a wallet already
+          stored on this device, we’ll upgrade it to be portable (encrypted vault).
+          Otherwise we’ll import it as a new wallet.
         </p>
 
         <div class="modal-field">
@@ -450,11 +486,11 @@
         </div>
 
         <div class="modal-field">
-          <label>12-word seed phrase</label>
+          <label>Seed phrase</label>
           <textarea
             id="iwMnemonic"
             class="input input-multiline"
-            placeholder="twelve words separated by spaces"
+            placeholder="words separated by spaces"
           ></textarea>
           <div id="iwError" class="modal-error" hidden></div>
         </div>
