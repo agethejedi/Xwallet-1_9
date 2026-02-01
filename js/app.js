@@ -2679,3 +2679,4 @@ renderTickerSettingsUI();
 startTickerAutoRefresh();
 setView("dashboard");
 updateAppVisibility();
+
