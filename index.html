@@ -116,6 +116,9 @@
             <button id="copyAddressBtn" class="icon-btn" title="Copy address">⧉</button>
             <button id="switchAccountBtn" class="pill-btn pill-btn-outline">Switch</button>
           </div>
+
+          <!-- ✅ Optional: reverse ENS name (your app.js references #walletEnsName) -->
+          <div id="walletEnsName" class="hint-text" hidden></div>
         </div>
       </header>
 
@@ -259,16 +262,22 @@
 
               <div class="risk-actions">
                 <label for="recipientInput">Recipient address</label>
+
                 <div class="recipient-row">
                   <input
                     id="recipientInput"
                     type="text"
                     class="input"
-                    placeholder="Paste address (0x...)"
+                    placeholder="Paste address (0x...) or ENS (name.eth)"
                   />
                   <button id="runSafeSendBtn" class="primary-btn sendsafe-btn">
                     <span class="safesend-tv">Sendsafe</span>
                   </button>
+                </div>
+
+                <!-- ✅ NEW: ENS resolution row (your app.js references these IDs) -->
+                <div id="recipientResolveRow" class="hint-text" hidden>
+                  Resolved address: <span id="recipientResolvedAddress"></span>
                 </div>
 
                 <button id="viewFullReportBtn" class="pill-btn pill-btn-outline">
